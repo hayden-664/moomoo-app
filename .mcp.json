@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "moomoo": {
+      "command": "sidecar/.venv/bin/python",
+      "args": ["sidecar/mcp_server.py"],
+      "env": {
+        "SIDECAR_URL": "http://127.0.0.1:8788"
+      }
+    }
+  }
+}

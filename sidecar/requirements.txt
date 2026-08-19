@@ -3,3 +3,4 @@ httpx==0.28.1
 moomoo_api==10.10.7008
 pandas==3.0.5
 uvicorn==0.52.3
+mcp==2.0.0

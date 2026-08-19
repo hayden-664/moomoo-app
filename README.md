@@ -143,6 +143,29 @@ numbers — what the contract costs, where it breaks even, what move that
 implies, its IV and liquidity. It describes mechanics; it does not recommend.
 Whether any of it is worth trading is your call.
 
+## Using it from Claude
+
+`.mcp.json` registers a read-only MCP server, so Claude Code picks it up
+automatically in this directory. Start the app first (`npm run dev`) — the MCP
+server talks to the sidecar, not to OpenD directly, so it inherits the caching,
+rate-limit handling and read-only guarantees.
+
+Tools exposed: `health`, `permissions`, `account`, `positions`, `pnl`,
+`deal_history`, `screen_options`. None of them can place, modify or cancel an
+order, because no such endpoint exists to call.
+
+Things it can answer:
+
+- "What is my net P&L, and how much of it is the approximate part?"
+- "Which position is furthest underwater in percentage terms?"
+- "How concentrated am I in semiconductors?"
+- "Summarise my closed trades this year."
+- "Screen HK.00700 calls, 20-40 days out."
+
+It reports mechanics and figures. It does not rank trades, score positions, or
+advise on whether to buy, sell or hold — that boundary is stated in the
+server's own instructions, not just by convention.
+
 ## Known limits on this account
 
 `GET /permissions` shows the live entitlement map. As configured:
