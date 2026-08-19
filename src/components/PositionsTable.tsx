@@ -17,8 +17,7 @@ type SortKey =
   | "market_val"
   | "today_pl_val"
   | "unrealized_pl"
-  | "unrealized_pct"
-  | "pl_ratio";
+  | "unrealized_pct";
 
 type SortDir = "asc" | "desc";
 
@@ -31,7 +30,6 @@ const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
   { key: "today_pl_val", label: "Today", align: "right" },
   { key: "unrealized_pl", label: "Unrealized", align: "right" },
   { key: "unrealized_pct", label: "Unrl %", align: "right" },
-  { key: "pl_ratio", label: "%", align: "right" },
 ];
 
 /** Unrealized P&L as a percentage of cost basis (qty × cost price). */
@@ -139,13 +137,6 @@ export default function PositionsTable({ positions, selected, onSelect }: Props)
                 }`}
               >
                 {pct(unrealizedPct(p))}
-              </td>
-              <td
-                className={`tnum px-3 py-2 text-right ${
-                  (p.pl_ratio ?? 0) > 0 ? "text-pos" : (p.pl_ratio ?? 0) < 0 ? "text-neg" : ""
-                }`}
-              >
-                {pct(p.pl_ratio)}
               </td>
             </tr>
           ))}
