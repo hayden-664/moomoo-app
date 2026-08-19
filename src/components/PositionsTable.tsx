@@ -124,12 +124,25 @@ export default function PositionsTable({ positions, selected, onSelect }: Props)
                 <div className="truncate text-xs text-muted">{p.stock_name}</div>
               </td>
               <td className="tnum px-3 py-2 text-right">{p.qty ?? "—"}</td>
-              <td className="tnum px-3 py-2 text-right"><Money value={p.cost_price} /></td>
-              <td className="tnum px-3 py-2 text-right"><Money value={p.nominal_price} /></td>
-              <td className="tnum px-3 py-2 text-right"><Money value={p.market_val} /></td>
-              <td className="px-3 py-2 text-right"><Money value={p.today_pl_val} signed showSign /></td>
+              <td className="tnum px-3 py-2 text-right">
+                <Money value={p.cost_price} currency={p.currency ?? "USD"} />
+              </td>
+              <td className="tnum px-3 py-2 text-right">
+                <Money value={p.nominal_price} currency={p.currency ?? "USD"} />
+              </td>
+              <td className="tnum px-3 py-2 text-right">
+                <Money value={p.market_val} currency={p.currency ?? "USD"} />
+              </td>
               <td className="px-3 py-2 text-right">
-                <Money value={p.unrealized_pl ?? p.pl_val} signed showSign />
+                <Money value={p.today_pl_val} currency={p.currency ?? "USD"} signed showSign />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <Money
+                  value={p.unrealized_pl ?? p.pl_val}
+                  currency={p.currency ?? "USD"}
+                  signed
+                  showSign
+                />
               </td>
               <td
                 className={`tnum px-3 py-2 text-right ${

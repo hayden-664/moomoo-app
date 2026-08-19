@@ -57,6 +57,7 @@ def _f(row: dict, *names: str) -> float:
 
 def summarise_positions(positions: Iterable[dict]) -> dict:
     unrealized = realized = today = market_value = cost_basis = 0.0
+    currencies: set[str] = set()
     for p in positions:
         unrealized += _f(p, "unrealized_pl", "pl_val")
         realized += _f(p, "realized_pl")
@@ -64,12 +65,16 @@ def summarise_positions(positions: Iterable[dict]) -> dict:
         market_value += _f(p, "market_val")
         qty = _f(p, "qty", "can_sell_qty")
         cost_basis += _f(p, "cost_price", "average_cost", "diluted_cost") * qty
+        ccy = p.get("currency")
+        if ccy and str(ccy) not in ("N/A", "NONE"):
+            currencies.add(str(ccy))
     return {
         "open_unrealized": round(unrealized, 2),
         "open_realized": round(realized, 2),
         "today": round(today, 2),
         "market_value": round(market_value, 2),
         "cost_basis": round(cost_basis, 2),
+        "currencies": sorted(currencies),
     }
 
 
@@ -195,10 +200,18 @@ def net_pnl(
     total_realized = closed_side["closed_realized"] + banked
 
     net = open_side["open_unrealized"] + total_realized
+    # Every figure above is a plain float sum. Position rows carry a currency,
+    # but deal rows do not -- history_deal_list_query has no currency parameter
+    # and returns `price` in the instrument's native currency -- so a non-USD
+    # holding makes the realized side an unconvertible mix that cannot be
+    # normalised here. Flag it rather than reporting a silently wrong total.
+    currencies = open_side.get("currencies", [])
     return {
         "net": round(net, 2),
         "total_realized": round(total_realized, 2),
         "open": open_side,
         "closed": closed_side,
         "partial": partial_side,
+        "currencies": currencies,
+        "mixed_currency": len(currencies) > 1,
     }

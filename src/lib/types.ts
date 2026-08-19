@@ -12,6 +12,8 @@ export type Position = {
   unrealized_pl: number | null;
   realized_pl: number | null;
   position_side: string | null;
+  /** Denomination moomoo reports for this row; not always the account currency. */
+  currency: string | null;
 };
 
 export type OpenPnl = {
@@ -20,6 +22,7 @@ export type OpenPnl = {
   today: number;
   market_value: number;
   cost_basis: number;
+  currencies: string[];
 };
 
 export type ClosedPnl = {
@@ -56,6 +59,10 @@ export type Pnl = {
     matched_from: string;
   };
   position_count: number;
+  /** Denominations seen across open positions. */
+  currencies: string[];
+  /** True when figures span >1 currency, which makes the totals uncomparable. */
+  mixed_currency: boolean;
 };
 
 export type Account = {

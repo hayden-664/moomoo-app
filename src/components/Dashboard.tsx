@@ -3,11 +3,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Account, Health, Pnl, Position } from "@/lib/types";
+import { fmt } from "./Money";
 import PnlSummary from "./PnlSummary";
 import PositionChart from "./PositionChart";
 import PositionsTable from "./PositionsTable";
 
 const POLL_MS = 30_000;
+
+/** Codes are `MARKET.SYMBOL` (US.META, MY.MAYBANK), so the prefix is the market. */
+function groupByMarket(positions: Position[]): [string, Position[]][] {
+  const groups = new Map<string, Position[]>();
+  for (const p of positions) {
+    const market = p.code.includes(".") ? p.code.split(".")[0] : "OTHER";
+    const rows = groups.get(market);
+    if (rows) rows.push(p);
+    else groups.set(market, [p]);
+  }
+  return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
 
 const RANGES = [
   { label: "1Y", days: 365 },
@@ -150,18 +163,32 @@ export default function Dashboard() {
       {pnl && <PnlSummary pnl={pnl} account={account} />}
 
       {positions && (
-        <section className="space-y-2">
+        <section className="space-y-4">
           <div className="flex items-baseline gap-3">
             <h2 className="text-sm font-medium text-muted">Positions</h2>
             <span className="text-xs text-muted">
               {selected ? "Click the row again to close the chart" : "Click a row to chart it"}
             </span>
           </div>
-          <PositionsTable
-            positions={positions}
-            selected={selected}
-            onSelect={(code) => setSelected((cur) => (cur === code ? null : code))}
-          />
+          {groupByMarket(positions).map(([market, rows]) => (
+            <div key={market} className="space-y-2">
+              <div className="flex items-baseline gap-2 text-xs text-muted">
+                <span className="font-medium uppercase tracking-wide text-foreground">{market}</span>
+                <span>
+                  {rows.length} {rows.length === 1 ? "position" : "positions"} ·{" "}
+                  {fmt(
+                    rows.reduce((s, p) => s + (p.market_val ?? 0), 0),
+                    rows[0].currency ?? "USD",
+                  )}
+                </span>
+              </div>
+              <PositionsTable
+                positions={rows}
+                selected={selected}
+                onSelect={(code) => setSelected((cur) => (cur === code ? null : code))}
+              />
+            </div>
+          ))}
         </section>
       )}
 

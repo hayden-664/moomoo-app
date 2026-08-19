@@ -28,6 +28,22 @@ function Stat({
 export default function PnlSummary({ pnl, account }: { pnl: Pnl; account: Account | null }) {
   return (
     <section className="space-y-3">
+      {/* Deal history carries no currency and cannot be normalised, so a
+          multi-currency account makes these totals a raw mix. Say so loudly
+          rather than presenting a number that looks authoritative. */}
+      {pnl.mixed_currency && (
+        <div className="rounded-lg border border-neg/40 bg-neg/10 px-4 py-3 text-sm">
+          <div className="font-medium text-neg">
+            Totals mix {pnl.currencies.join(" and ")} — not converted
+          </div>
+          <div className="mt-1 text-muted">
+            Positions span more than one currency, and these figures are plain sums, so Net P&amp;L,
+            Realized, Market value and Cost basis are not meaningful as a single number. The
+            per-market tables below are each correct in their own currency.
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           label="Net P&L"
