@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n web,sidecar -c cyan,magenta \"next dev\" \"./run-sidecar.sh\"",
+    "dev": "./start-dev.sh",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "sidecar": "./run-sidecar.sh",
     "setup:sidecar": "python3 -m venv sidecar/.venv && sidecar/.venv/bin/pip install -r sidecar/requirements.txt",
     "dev:web": "next dev",
-    "check:permissions": "./check-permissions.sh"
+    "check:permissions": "./check-permissions.sh",
+    "dev:raw": "concurrently -n web,sidecar -c cyan,magenta \"next dev\" \"./run-sidecar.sh\""
   },
   "dependencies": {
     "next": "16.3.1",
