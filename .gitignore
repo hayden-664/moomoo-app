@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# python sidecar
+sidecar/.venv/
+sidecar/__pycache__/
+.env*
+!.env.example
+
+sidecar/.state.json

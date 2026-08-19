@@ -1,36 +1,189 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# moomoo-app
 
-## Getting Started
+Read-only moomoo portfolio dashboard, options screener, and Telegram alerts —
+running entirely on localhost.
 
-First, run the development server:
+```
+Claude Code ──(moomoo Agent Hub skills)──┐
+                                         ▼
+Next.js 16  ──HTTP──>  Python sidecar  ──TCP──>  OpenD (127.0.0.1:11111)  ──>  moomoo
+localhost:3000         localhost:8788            holds your logged-in session
+```
+
+## Why a Python sidecar and not the Node SDK
+
+The npm `moomoo-api` package depends on `protobufjs@6`, which carries several
+unpatched critical advisories with no fix available. The Python SDK is the
+officially supported path, is what moomoo's own Agent Hub skill drives, and
+means Claude and this dashboard share one integration instead of two.
+
+## Read-only by construction
+
+There is no order-placing endpoint anywhere in this codebase. `sidecar/
+moomoo_client.py` runs an `assert_read_only()` check at import time that
+crashes the process if `place_order`, `modify_order` or `unlock_trade` ever
+appear in it, and the Next.js proxy uses an explicit route allowlist. Placing
+trades stays in the moomoo app, where it belongs.
+
+## Setup
+
+### 1. Install OpenD
+
+OpenD is the gateway that holds your brokerage session. Download it from
+<https://www.moomoo.com/download/OpenAPI> → **Moomoo OpenD** → Mac. Version
+must be **10.10.7008 or newer** to match the pinned SDK.
+
+Install it, launch it, and log in with your moomoo credentials. In OpenD's
+settings confirm:
+
+- **Listening address**: `127.0.0.1` (not `0.0.0.0`)
+- **Port**: `11111`
+
+Keep it on `127.0.0.1`. moomoo requires a private key for trading interfaces
+on any non-local address, which is their way of saying an exposed OpenD is a
+live trading endpoint on the open internet.
+
+### 2. Configure
+
+```bash
+cp .env.example .env
+```
+
+Start the sidecar, then discover your real account settings:
+
+```bash
+npm run sidecar
+```
+
+```bash
+curl -s localhost:8788/accounts | python3 -m json.tool
+```
+
+Set `MOOMOO_SECURITY_FIRM` and `MOOMOO_TRD_MARKET` in `.env` to match what
+that returns. This must reflect the moomoo entity your account was opened
+under — `FUTUMY` for moomoo Malaysia, `FUTUINC` for moomoo US, and so on.
+A mismatch returns an empty account list rather than an error.
+
+### 3. Telegram (optional)
+
+1. Message [@BotFather](https://t.me/BotFather), send `/newbot`, copy the token.
+2. Send your new bot any message.
+3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy
+   `result[0].message.chat.id`.
+4. Put both in `.env`, restart the sidecar, then:
+
+```bash
+curl -X POST localhost:8788/notify/test
+```
+
+### 4. Run
+
+One command starts both the website and the sidecar:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open <http://localhost:3000>. (`npm run dev:web` and `npm run sidecar`
+still run them separately if you want split logs.)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Alerts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The scheduler runs inside the sidecar. Configure in `.env`:
 
-## Learn More
+| Variable | Meaning |
+|---|---|
+| `ALERT_DAILY_TIME` | Time of the daily summary, local, `HH:MM` |
+| `ALERT_DAYS` | `mon-fri`, `daily`, or a list like `mon,wed,fri` |
+| `ALERT_MOVE_ABS` | Message when net P&L moves this many dollars since the last alert. `0` disables |
+| `ALERT_CHECK_MINUTES` | How often the move check runs |
+| `ALERTS_ENABLED` | `false` to silence everything |
+| `ALERT_SCREEN_ENABLED` | Daily options screen digest |
+| `ALERT_SCREEN_TIME` | When the digest sends |
+| `ALERT_SCREEN_CODES` | Blank derives from your positions |
 
-To learn more about Next.js, take a look at the following resources:
+The screen digest sends the same per-strike mechanical lines the UI shows —
+cost, breakeven, required move, IV, liquidity. It reports what each contract
+is and what it needs to do; it does not rank contracts by desirability or
+suggest what to buy. Symbols in markets with no option entitlement are skipped
+rather than reported as errors.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Alerts only fire while the sidecar is running on this Mac.** Nothing fires
+when the machine is off or asleep — there is no cloud component, by design.
+`com.hayden.moomoo-sidecar.plist` will auto-start the sidecar at login so you
+do not have to start it by hand, but a sleeping Mac still sends nothing.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How net P&L is assembled
 
-## Deploy on Vercel
+moomoo does not report a single net P&L for securities accounts —
+`accinfo_query` only carries realized/unrealized for *futures* accounts. So it
+is built from three sources of differing authority:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Component | Source | Authority |
+|---|---|---|
+| Open unrealized | `position_list_query.unrealized_pl` | Broker-reported |
+| Banked on open | `position_list_query.realized_pl` | Broker-reported |
+| Closed realized | FIFO match over `history_deal_list_query` | **Derived, approximate** |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Fully-closed positions vanish from the position list, so their P&L is
+reconstructed by FIFO-matching executed deals (long and short inventory
+tracked separately, options multiplied by contract size). It excludes
+commissions, dividends and corporate actions, and is only as complete as the
+history window queried. The UI labels it as approximate — don't reconcile
+your taxes against it.
+
+## Options screener
+
+`get_option_chain` returns only static contract terms; greeks, IV and open
+interest can be *filtered* server-side but are not returned. The screener
+therefore does chain → codes → `get_market_snapshot` → merge.
+
+Each result carries a one-line characterisation built purely from live
+numbers — what the contract costs, where it breaks even, what move that
+implies, its IV and liquidity. It describes mechanics; it does not recommend.
+Whether any of it is worth trading is your call.
+
+## Known limits on this account
+
+`GET /permissions` shows the live entitlement map. As configured:
+
+| Market | Stocks | Options |
+|---|---|---|
+| US | LV3 | **NO** — screener cannot run on US underlyings |
+| HK | LV1 | LV1 — works |
+
+US option chains fail with a permission error until US options data is added to
+the account. The screener warns before running rather than failing mid-request.
+
+**The card that fixes this:** "OPRA Options Real-time", **$6/month**, found
+under the **Moomoo API** filter in the moomoo Market Data card mall. It is the
+only options card offered on the API side.
+
+Note the app/API split: the same card is $2.99/month app-side. moomoo's docs
+state "the quote right of Moomoo API is not exactly the same as that of APP.
+Some quotation cards are only applicable to the APP side" — so always buy from
+the Moomoo API filter, not the general listing. Rights apply only **after
+restarting OpenD**.
+
+Re-check at any time:
+
+```bash
+npm run check:permissions
+```
+
+## Endpoints
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/health` | OpenD reachability, Telegram config |
+| GET | `/accounts` | Sub-accounts (for discovering config) |
+| GET | `/permissions` | Quote entitlements per market |
+| GET | `/account` | Balances, buying power |
+| GET | `/positions` | Open positions |
+| GET | `/pnl?days=` | Net P&L breakdown |
+| GET | `/history?days=` | Executed deals |
+| GET | `/options/screen?code=` | Screened option chain |
+| POST | `/notify/pnl` | Push P&L to Telegram |
+| POST | `/notify/test` | Telegram connectivity test |
+
+Interactive docs at <http://localhost:8788/docs>.

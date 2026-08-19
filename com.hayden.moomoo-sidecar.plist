@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Optional: run the sidecar automatically at login so alerts fire without you
+  starting anything. This does NOT make alerts work while the Mac is off or
+  asleep — nothing running locally can do that.
+
+  Install:
+    cp com.hayden.moomoo-sidecar.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.hayden.moomoo-sidecar.plist
+
+  Remove:
+    launchctl unload ~/Library/LaunchAgents/com.hayden.moomoo-sidecar.plist
+    rm ~/Library/LaunchAgents/com.hayden.moomoo-sidecar.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hayden.moomoo-sidecar</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/private/var/my_projects/moomoo-app/run-sidecar.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/private/var/my_projects/moomoo-app</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if it exits, e.g. after OpenD is restarted. -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/moomoo-sidecar.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/moomoo-sidecar.err.log</string>
+</dict>
+</plist>
