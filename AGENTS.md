@@ -47,6 +47,11 @@ zero results instead:
 - **`history_deal_list_query` caps the window at 360 days.** Anything wider
   errors. `deal_history()` chunks into 359-day slices and dedupes on `deal_id`
   because chunk boundaries are inclusive at both ends.
+- **`position_list_query` and `accinfo_query` are rate-limited to 10 calls per
+  30 seconds too**, not just deal history. The dashboard polls and the P&L
+  range selector refetches, so bursts are easy to produce; both are served from
+  a 5s cache in `moomoo_client` with the last good value on failure. Without
+  that, tripping the limit 502s `/pnl` and blanks the whole dashboard.
 - **`history_deal_list_query` is rate-limited to 10 calls per 30 seconds.**
   A 15s dashboard poll trips this. Results are cached for 5 minutes and the
   last good value is served on failure — otherwise a transient limit silently
