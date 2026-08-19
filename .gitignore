@@ -47,3 +47,4 @@ sidecar/__pycache__/
 !.env.example
 
 sidecar/.state.json
+sidecar/.cache/

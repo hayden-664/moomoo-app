@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import klines
 import scheduler
 import telegram
 from config import SIDECAR_HOST, SIDECAR_PORT, TRD_MARKET
@@ -193,6 +194,34 @@ def options_screen(
         min_open_interest=min_open_interest,
         limit=limit,
     )
+
+
+@app.get("/quota")
+def quota() -> dict:
+    """Remaining historical-kline and subscription budget.
+
+    Worth checking before warming a lot of new symbols: the kline charge is per
+    symbol per period, so codes already listed cost nothing to pull again.
+    """
+    return klines.quota()
+
+
+@app.get("/candles")
+def candles(
+    code: str = Query(..., description="e.g. US.TSLA"),
+    days: int = Query(365, ge=5, le=1825),
+    ktype: str = Query("K_DAY", pattern="^K_(1M|5M|15M|30M|60M|DAY|WEEK|MON)$"),
+) -> dict:
+    return klines.candles(code=code, days=days, ktype=ktype)
+
+
+@app.get("/markers")
+def markers(
+    code: str = Query(..., description="e.g. US.TSLA"),
+    days: int = Query(365, ge=5, le=1825),
+) -> list[dict]:
+    """Your fills for one symbol, ready to plot against the bars."""
+    return klines.markers(code=code, days=days)
 
 
 @app.post("/notify/pnl")

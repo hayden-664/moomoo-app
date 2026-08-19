@@ -46,15 +46,13 @@ def format_pnl(summary: dict, account: dict | None = None) -> str:
     """Render the net P&L block as a Telegram HTML message."""
     net = summary["net"]
     o = summary["open"]
-    c = summary["closed"]
     arrow = "🟢" if net >= 0 else "🔴"
     lines = [
         f"{arrow} <b>Net P&amp;L: ${net:,.2f}</b>",
         "",
         f"Today: ${o['today']:,.2f}",
         f"Open unrealized: ${o['open_unrealized']:,.2f}",
-        f"Open realized: ${o['open_realized']:,.2f}",
-        f"Closed realized: ${c['closed_realized']:,.2f} <i>(approx)</i>",
+        f"Realized: ${summary['total_realized']:,.2f} <i>(approx)</i>",
         "",
         f"Market value: ${o['market_value']:,.2f}",
     ]

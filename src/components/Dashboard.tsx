@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Account, Health, Pnl, Position } from "@/lib/types";
 import PnlSummary from "./PnlSummary";
+import PositionChart from "./PositionChart";
 import PositionsTable from "./PositionsTable";
 
 const POLL_MS = 30_000;
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [updated, setUpdated] = useState<Date | null>(null);
   const [notifying, setNotifying] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
 
   // `alive` guards every setState so a request still in flight when the
   // component unmounts (or when polling is torn down) cannot write state.
@@ -72,6 +74,8 @@ export default function Dashboard() {
     }
   };
 
+  const selectedPosition = positions?.find((p) => p.code === selected) ?? null;
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -114,8 +118,24 @@ export default function Dashboard() {
 
       {positions && (
         <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted">Positions</h2>
-          <PositionsTable positions={positions} />
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-sm font-medium text-muted">Positions</h2>
+            <span className="text-xs text-muted">
+              {selected ? "Click the row again to close the chart" : "Click a row to chart it"}
+            </span>
+          </div>
+          <PositionsTable
+            positions={positions}
+            selected={selected}
+            onSelect={(code) => setSelected((cur) => (cur === code ? null : code))}
+          />
+        </section>
+      )}
+
+      {selectedPosition && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-muted">Chart</h2>
+          <PositionChart position={selectedPosition} />
         </section>
       )}
     </div>

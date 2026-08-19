@@ -1,9 +1,12 @@
 import type {
   Account,
+  Candles,
+  Fill,
   Health,
   Permissions,
   Pnl,
   Position,
+  Quota,
   ScreenResult,
 } from "./types";
 
@@ -23,6 +26,9 @@ export const api = {
   account: () => get<Account>("account"),
   positions: () => get<Position[]>("positions"),
   pnl: (days = 365) => get<Pnl>("pnl", { days }),
+  quota: () => get<Quota>("quota"),
+  candles: (code: string, days = 365) => get<Candles>("candles", { code, days }),
+  markers: (code: string, days = 365) => get<Fill[]>("markers", { code, days }),
   screen: (params: Record<string, string | number>) =>
     get<ScreenResult>("options/screen", params),
   notify: async (which: "pnl" | "test") => {

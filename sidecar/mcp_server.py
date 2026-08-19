@@ -68,10 +68,13 @@ async def positions() -> list | dict:
 
 @mcp.tool(
     description=(
-        "Net P&L broken into its sources. `open.open_unrealized` and "
-        "`open.open_realized` are broker-reported. `closed.closed_realized` is "
-        "DERIVED by FIFO-matching deal history and excludes fees, dividends and "
-        "corporate actions — always describe it as approximate."
+        "Net P&L broken into its sources. `total_realized` is everything cashed "
+        "out — use it when asked what has actually been realized. It splits into "
+        "`closed.closed_realized` (positions fully exited) and "
+        "`partial.partial_realized` (banked from selling part of a holding still "
+        "owned). `open.open_unrealized` is broker-reported mark-to-market; the "
+        "realized figures are DERIVED by FIFO-matching deal history and exclude "
+        "fees, dividends and corporate actions — always describe them as approximate."
     )
 )
 async def pnl(days: int = 365) -> dict:

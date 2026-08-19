@@ -18,6 +18,9 @@ const GET_ROUTES = new Set([
   "pnl",
   "history",
   "options/screen",
+  "quota",
+  "candles",
+  "markers",
 ]);
 
 const POST_ROUTES = new Set(["notify/pnl", "notify/test"]);

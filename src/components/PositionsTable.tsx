@@ -1,7 +1,14 @@
 import type { Position } from "@/lib/types";
 import Money, { pct } from "./Money";
 
-export default function PositionsTable({ positions }: { positions: Position[] }) {
+type Props = {
+  positions: Position[];
+  /** Code of the row whose chart is open, if any. */
+  selected?: string | null;
+  onSelect?: (code: string) => void;
+};
+
+export default function PositionsTable({ positions, selected, onSelect }: Props) {
   if (positions.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-surface p-8 text-center text-sm text-muted">
@@ -31,7 +38,14 @@ export default function PositionsTable({ positions }: { positions: Position[] })
         </thead>
         <tbody>
           {sorted.map((p) => (
-            <tr key={p.code} className="border-b border-border last:border-0 hover:bg-surface">
+            <tr
+              key={p.code}
+              onClick={() => onSelect?.(p.code)}
+              aria-selected={selected === p.code}
+              className={`border-b border-border last:border-0 hover:bg-surface ${
+                onSelect ? "cursor-pointer" : ""
+              } ${selected === p.code ? "bg-surface" : ""}`}
+            >
               <td className="px-3 py-2">
                 <div className="font-medium">{p.code}</div>
                 <div className="truncate text-xs text-muted">{p.stock_name}</div>

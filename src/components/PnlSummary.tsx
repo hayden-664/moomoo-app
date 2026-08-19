@@ -42,9 +42,9 @@ export default function PnlSummary({ pnl, account }: { pnl: Pnl; account: Accoun
           note="Mark-to-market, broker-reported"
         />
         <Stat
-          label="Closed realized"
-          value={pnl.closed.closed_realized}
-          note={`Derived from ${pnl.window.deals} deals · approximate`}
+          label="Realized"
+          value={pnl.total_realized}
+          note="Cashed out, incl. partial sells · approximate"
         />
       </div>
 
@@ -54,9 +54,6 @@ export default function PnlSummary({ pnl, account }: { pnl: Pnl; account: Accoun
         </span>
         <span className="text-muted">
           Cost basis <span className="tnum text-foreground">{fmt(pnl.open.cost_basis)}</span>
-        </span>
-        <span className="text-muted">
-          Banked on open <Money value={pnl.open.open_realized} signed />
         </span>
         {account?.total_assets != null && (
           <span className="text-muted">
@@ -70,16 +67,16 @@ export default function PnlSummary({ pnl, account }: { pnl: Pnl; account: Accoun
         )}
       </div>
 
-      {/* The provenance of each number matters more than usual here: three of
-          the four figures above come from the broker, one is reconstructed. */}
+      {/* The provenance of each number matters more than usual here: only open
+          unrealized is broker-reported; realized is reconstructed from deals. */}
       <p className="text-xs leading-relaxed text-muted">
-        <strong className="text-foreground">How net P&amp;L is built:</strong> open unrealized and
-        banked-on-open come straight from the broker. Closed realized is reconstructed by
-        FIFO-matching your deal history over the last {pnl.window.deals > 0 ? "" : "≤"}
-        {" "}
-        {pnl.window.start} → {pnl.window.end}, because fully-closed positions disappear from the
-        position list. It excludes {pnl.closed.excludes.join(", ")}, so treat it as an estimate
-        rather than a statement.
+        <strong className="text-foreground">How net P&amp;L is built:</strong> open unrealized comes
+        straight from the broker. Realized is reconstructed by FIFO-matching {pnl.window.deals}{" "}
+        deals over {pnl.window.start} → {pnl.window.end}, because this account reports no realized
+        P&amp;L of its own — it combines {fmt(pnl.closed.closed_realized)} from positions you are
+        fully out of with {fmt(pnl.total_realized - pnl.closed.closed_realized)} banked from
+        selling part of holdings you still own. It excludes {pnl.closed.excludes.join(", ")}, so
+        treat it as an estimate rather than a statement.
       </p>
     </section>
   );

@@ -283,5 +283,85 @@ class MoomooClient:
         return out
 
 
+    # -- market data --------------------------------------------------------
+    @staticmethod
+    def _unwrap_paged(result: tuple, what: str) -> tuple[list[dict], Any]:
+        """``request_history_kline`` returns (ret, data, page_req_key).
+
+        Every other SDK call in this module returns a 2-tuple, so ``_unwrap``
+        raises on unpack here. Keep the two shapes separate rather than making
+        ``_unwrap`` guess.
+        """
+        ret, payload, page_key = result
+        if ret != mm.RET_OK:
+            raise MoomooError(f"{what} failed: {payload}")
+        rows = payload.replace({float("nan"): None}).to_dict(orient="records")
+        return rows, page_key
+
+    def kline_quota(self) -> dict:
+        """Remaining historical-kline pulls.
+
+        The charge is per symbol per period, not per call: a code already in
+        ``detail_list`` can be re-pulled for free. That is what makes a full
+        re-fetch cheaper than incremental appends (see klines.py).
+        """
+        ret, payload = self.quote.get_history_kl_quota(get_detail=True)
+        if ret != mm.RET_OK:
+            raise MoomooError(f"get_history_kl_quota failed: {payload}")
+        used, remain, detail = payload
+        return {
+            "used": used,
+            "remain": remain,
+            "symbols": [d.get("code") for d in detail],
+            "detail": detail,
+        }
+
+    def subscription_quota(self) -> dict:
+        ret, payload = self.quote.query_subscription()
+        if ret != mm.RET_OK:
+            raise MoomooError(f"query_subscription failed: {payload}")
+        return {
+            "used": payload.get("total_used"),
+            "remain": payload.get("remain"),
+            "option_used": payload.get("option_used_quota"),
+            "option_remain": payload.get("option_remain_quota"),
+        }
+
+    def history_kline(
+        self,
+        code: str,
+        start: str,
+        end: str,
+        ktype: str = "K_DAY",
+        autype: str = "QFQ",
+    ) -> list[dict]:
+        """Full page-walk of historical bars.
+
+        ``max_count`` caps a single response, so a multi-year daily pull comes
+        back in pages keyed by ``page_req_key``. Loop until the key is None or
+        no rows come back, otherwise long windows silently truncate.
+        """
+        require_opend()
+        out: list[dict] = []
+        page_key = None
+        while True:
+            rows, page_key = self._unwrap_paged(
+                self.quote.request_history_kline(
+                    code,
+                    start=start,
+                    end=end,
+                    ktype=getattr(mm.KLType, ktype),
+                    autype=getattr(mm.AuType, autype),
+                    max_count=1000,
+                    page_req_key=page_key,
+                ),
+                f"request_history_kline({code}, {ktype})",
+            )
+            out.extend(rows)
+            if not page_key or not rows:
+                break
+        return out
+
+
 assert_read_only()
 client = MoomooClient()

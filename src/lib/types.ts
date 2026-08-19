@@ -30,10 +30,23 @@ export type ClosedPnl = {
   excludes: string[];
 };
 
+/** Banked by selling part of a holding you still own. Derived, like ClosedPnl. */
+export type PartialPnl = {
+  partial_realized: number;
+  by_symbol: Record<string, number>;
+  approximate: true;
+  excludes: string[];
+  /** False when the broker reports its own figure and this one would double-count. */
+  counted_in_net: boolean;
+};
+
 export type Pnl = {
   net: number;
+  /** Everything cashed out: closed round-trips plus partial sells. */
+  total_realized: number;
   open: OpenPnl;
   closed: ClosedPnl;
+  partial: PartialPnl;
   window: { start: string; end: string; deals: number };
   position_count: number;
 };
@@ -93,4 +106,39 @@ export type Health = {
 export type Permissions = {
   markets: Record<string, { stock: string | null; option: string | null }>;
   options_enabled: string[];
+};
+
+export type Bar = {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type Candles = {
+  code: string;
+  ktype: string;
+  /** Whether this response came from the local bar cache or the moomoo API. */
+  source: "cache" | "api";
+  bars: Bar[];
+};
+
+/** One day's fills for a symbol, merged per side at the weighted price. */
+export type Fill = {
+  time: string;
+  side: "BUY" | "SELL";
+  qty: number;
+  price: number | null;
+};
+
+export type Quota = {
+  kline: { used: number; remain: number; symbols: string[] };
+  subscription: {
+    used: number | null;
+    remain: number | null;
+    option_used: number | null;
+    option_remain: number | null;
+  } | null;
 };
