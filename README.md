@@ -145,6 +145,18 @@ Whether any of it is worth trading is your call.
 
 ## Using it from Claude
 
+There are two Claude clients and they read **different config files**:
+
+| Client | Config | Paths |
+|---|---|---|
+| Claude Code (in this folder) | `.mcp.json` (committed) | relative — it runs here |
+| Claude Desktop app | `~/Library/Application Support/Claude/claude_desktop_config.json` | **absolute** — it does not run here |
+
+Configuring only `.mcp.json` leaves the desktop app with no access at all; it
+will say it has no connection to your account. The desktop entry must use
+absolute paths, and **Claude Desktop needs a full restart** (quit, not just
+close the window) after the config changes.
+
 `.mcp.json` registers a read-only MCP server, so Claude Code picks it up
 automatically in this directory. Start the app first (`npm run dev`) — the MCP
 server talks to the sidecar, not to OpenD directly, so it inherits the caching,
