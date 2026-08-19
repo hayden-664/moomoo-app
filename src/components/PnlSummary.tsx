@@ -44,7 +44,7 @@ export default function PnlSummary({ pnl, account }: { pnl: Pnl; account: Accoun
         <Stat
           label="Realized"
           value={pnl.total_realized}
-          note="Cashed out, incl. partial sells · approximate"
+          note={`Cashed out since ${pnl.window.start} · approximate`}
         />
       </div>
 

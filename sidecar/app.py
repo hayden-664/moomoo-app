@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 import klines
 import scheduler
 import telegram
-from config import SIDECAR_HOST, SIDECAR_PORT, TRD_MARKET
+from config import PNL_LOOKBACK_DAYS, SIDECAR_HOST, SIDECAR_PORT, TRD_MARKET
 from moomoo_client import MoomooError, OpendUnreachable, client, opend_reachable
 from pnl import net_pnl
 from screener import screen
@@ -146,19 +146,32 @@ def positions() -> list[dict]:
 
 
 @app.get("/pnl")
-def pnl(days: int = Query(365, ge=1, le=1825)) -> dict:
-    """Net P&L across open positions and (derived) closed round-trips."""
+def pnl(days: int = Query(PNL_LOOKBACK_DAYS, ge=1, le=PNL_LOOKBACK_DAYS)) -> dict:
+    """Net P&L across open positions and (derived) realized trades.
+
+    ``days`` narrows what is *reported*. Deals are always pulled over the full
+    lookback so that FIFO matching can see the buys behind a sell, and so that
+    changing the range in the UI costs no additional broker calls.
+    """
     start, end = _default_window(days)
+    full_start, _ = _default_window(PNL_LOOKBACK_DAYS)
     positions = client.positions()
     try:
-        deals = client.deal_history(start, end)
+        deals = client.deal_history(full_start, end)
     except MoomooError as exc:
         # History can fail independently (permissions, window too wide). Degrade
         # to open-position P&L rather than losing the whole response.
         log.warning("deal history unavailable: %s", exc)
         deals = []
-    summary = net_pnl(positions, deals)
-    summary["window"] = {"start": start, "end": end, "deals": len(deals)}
+    summary = net_pnl(positions, deals, since=start)
+    in_window = [d for d in deals if str(d.get("create_time") or "")[:10] >= start]
+    summary["window"] = {
+        "start": start,
+        "end": end,
+        "days": days,
+        "deals": len(in_window),
+        "matched_from": full_start,
+    }
     summary["position_count"] = len(positions)
     return summary
 

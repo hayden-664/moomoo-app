@@ -52,7 +52,9 @@ def format_pnl(summary: dict, account: dict | None = None) -> str:
         "",
         f"Today: ${o['today']:,.2f}",
         f"Open unrealized: ${o['open_unrealized']:,.2f}",
-        f"Realized: ${summary['total_realized']:,.2f} <i>(approx)</i>",
+        # The window matters: anything sold before it is not in this figure.
+        f"Realized: ${summary['total_realized']:,.2f} "
+        f"<i>(approx, since {summary['window']['start']})</i>",
         "",
         f"Market value: ${o['market_value']:,.2f}",
     ]

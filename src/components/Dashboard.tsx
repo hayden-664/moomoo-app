@@ -9,6 +9,13 @@ import PositionsTable from "./PositionsTable";
 
 const POLL_MS = 30_000;
 
+const RANGES = [
+  { label: "1Y", days: 365 },
+  { label: "2Y", days: 730 },
+  { label: "3Y", days: 1095 },
+  { label: "5Y", days: 1825 },
+];
+
 export default function Dashboard() {
   const [health, setHealth] = useState<Health | null>(null);
   const [pnl, setPnl] = useState<Pnl | null>(null);
@@ -18,34 +25,40 @@ export default function Dashboard() {
   const [updated, setUpdated] = useState<Date | null>(null);
   const [notifying, setNotifying] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  // Widest by default: the sidecar pulls the full lookback regardless, so a
+  // narrower range hides history rather than saving a call.
+  const [days, setDays] = useState(1825);
 
   // `alive` guards every setState so a request still in flight when the
   // component unmounts (or when polling is torn down) cannot write state.
-  const load = useCallback(async (alive: () => boolean = () => true) => {
-    try {
-      const h = await api.health();
-      if (!alive()) return;
-      setHealth(h);
-      if (h.opend !== "connected") {
-        setError(h.error ?? "OpenD is not connected. Start OpenD and log in.");
-        return;
+  const load = useCallback(
+    async (alive: () => boolean = () => true) => {
+      try {
+        const h = await api.health();
+        if (!alive()) return;
+        setHealth(h);
+        if (h.opend !== "connected") {
+          setError(h.error ?? "OpenD is not connected. Start OpenD and log in.");
+          return;
+        }
+        const [p, pos, acc] = await Promise.all([
+          api.pnl(days),
+          api.positions(),
+          api.account().catch(() => null),
+        ]);
+        if (!alive()) return;
+        setPnl(p);
+        setPositions(pos);
+        setAccount(acc);
+        setError(null);
+        setUpdated(new Date());
+      } catch (e) {
+        if (!alive()) return;
+        setError(e instanceof Error ? e.message : String(e));
       }
-      const [p, pos, acc] = await Promise.all([
-        api.pnl(),
-        api.positions(),
-        api.account().catch(() => null),
-      ]);
-      if (!alive()) return;
-      setPnl(p);
-      setPositions(pos);
-      setAccount(acc);
-      setError(null);
-      setUpdated(new Date());
-    } catch (e) {
-      if (!alive()) return;
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
+    },
+    [days],
+  );
 
   useEffect(() => {
     let active = true;
@@ -91,6 +104,26 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div
+            className="flex items-center rounded-md border border-border bg-surface p-0.5"
+            role="group"
+            aria-label="P&L window"
+          >
+            {RANGES.map((r) => (
+              <button
+                key={r.days}
+                onClick={() => setDays(r.days)}
+                aria-pressed={days === r.days}
+                className={`rounded px-2 py-1 text-xs ${
+                  days === r.days
+                    ? "bg-accent/15 text-accent"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
           <StatusDot health={health} />
           <button
             onClick={sendToTelegram}

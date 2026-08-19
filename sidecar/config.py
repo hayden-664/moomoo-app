@@ -25,6 +25,12 @@ ACC_INDEX = int(os.getenv("MOOMOO_ACC_INDEX", "0"))
 # Reporting currency for account/position aggregation.
 CURRENCY = os.getenv("MOOMOO_CURRENCY", "USD")
 
+# How far back to pull deal history for P&L. Every caller uses this same value
+# so they share one cache entry: the reporting window is narrowed afterwards in
+# pnl.py, which costs nothing, whereas a second lookback would mean a second
+# round of chunked history calls against a 10-per-30s rate limit.
+PNL_LOOKBACK_DAYS = int(os.getenv("MOOMOO_PNL_LOOKBACK_DAYS", "1825"))
+
 # --- Safety -----------------------------------------------------------------
 # This sidecar is read-only by construction; see moomoo_client.assert_read_only.
 # TrdEnv.REAL is used for reads only. No order-placing call exists in this

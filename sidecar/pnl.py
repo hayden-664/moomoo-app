@@ -76,7 +76,7 @@ def summarise_positions(positions: Iterable[dict]) -> dict:
 _EXCLUDES = ["commissions", "dividends", "corporate actions"]
 
 
-def realized_from_deals(deals: Iterable[dict]) -> dict:
+def realized_from_deals(deals: Iterable[dict], since: str | None = None) -> dict:
     """FIFO-match buys against sells to recover realized P&L from deal history.
 
     Returns two blocks: ``closed`` for symbols now flat, and ``partial`` for
@@ -85,10 +85,17 @@ def realized_from_deals(deals: Iterable[dict]) -> dict:
     Long and short inventory are tracked separately per symbol so that a
     short-then-cover sequence is matched correctly rather than being read as
     an unmatched sell.
+
+    ``since`` filters which realized events are *reported*, not which deals are
+    matched. Matching always runs over every deal given, because truncating the
+    input first would leave sells whose opening buy predates the window looking
+    like unmatched shorts, and invent P&L that never happened. Each close is
+    dated by its closing deal and only those on or after ``since`` are summed.
     """
     longs: dict[str, deque[list[float]]] = defaultdict(deque)
     shorts: dict[str, deque[list[float]]] = defaultdict(deque)
-    per_symbol: dict[str, float] = defaultdict(float)
+    # (code, date of the closing deal, realized amount)
+    events: list[tuple[str, str, float]] = []
 
     def side_of(deal: dict) -> str:
         return str(deal.get("trd_side", "")).upper()
@@ -103,6 +110,7 @@ def realized_from_deals(deals: Iterable[dict]) -> dict:
             continue
         mult = contract_multiplier(code)
         side = side_of(deal)
+        day = str(deal.get("create_time") or "")[:10]
 
         if side in ("BUY", "BUY_BACK"):
             # A buy first covers any open short, then opens/extends a long.
@@ -110,7 +118,7 @@ def realized_from_deals(deals: Iterable[dict]) -> dict:
             while remaining > 0 and shorts[code]:
                 lot = shorts[code][0]
                 take = min(lot[0], remaining)
-                per_symbol[code] += (lot[1] - price) * take * mult
+                events.append((code, day, (lot[1] - price) * take * mult))
                 lot[0] -= take
                 remaining -= take
                 if lot[0] <= 0:
@@ -123,13 +131,19 @@ def realized_from_deals(deals: Iterable[dict]) -> dict:
             while remaining > 0 and longs[code]:
                 lot = longs[code][0]
                 take = min(lot[0], remaining)
-                per_symbol[code] += (price - lot[1]) * take * mult
+                events.append((code, day, (price - lot[1]) * take * mult))
                 lot[0] -= take
                 remaining -= take
                 if lot[0] <= 0:
                     longs[code].popleft()
             if remaining > 0:
                 shorts[code].append([remaining, price])
+
+    per_symbol: dict[str, float] = defaultdict(float)
+    for code, day, amount in events:
+        if since and day < since:
+            continue
+        per_symbol[code] += amount
 
     # A symbol with no inventory left is a finished round-trip. One that still
     # holds a lot has banked something from a partial sell, which is reported
@@ -157,9 +171,11 @@ def realized_from_deals(deals: Iterable[dict]) -> dict:
     }
 
 
-def net_pnl(positions: Iterable[dict], deals: Iterable[dict]) -> dict:
+def net_pnl(
+    positions: Iterable[dict], deals: Iterable[dict], since: str | None = None
+) -> dict:
     open_side = summarise_positions(positions)
-    derived = realized_from_deals(deals)
+    derived = realized_from_deals(deals, since=since)
     closed_side = derived["closed"]
     partial_side = derived["partial"]
 

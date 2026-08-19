@@ -47,7 +47,14 @@ export type Pnl = {
   open: OpenPnl;
   closed: ClosedPnl;
   partial: PartialPnl;
-  window: { start: string; end: string; deals: number };
+  window: {
+    start: string;
+    end: string;
+    days: number;
+    deals: number;
+    /** Deals are matched from here even when reporting starts later. */
+    matched_from: string;
+  };
   position_count: number;
 };
 

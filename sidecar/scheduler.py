@@ -26,6 +26,7 @@ import os
 import pathlib
 
 import telegram
+from config import PNL_LOOKBACK_DAYS
 from moomoo_client import MoomooError, OpendUnreachable, client
 from pnl import net_pnl
 from screener import screen
@@ -103,12 +104,15 @@ def _snapshot() -> dict:
     """Current net P&L, or raise if the broker side is unavailable."""
     positions = client.positions()
     today = dt.date.today()
-    start = (today - dt.timedelta(days=365)).isoformat()
+    # Same lookback as the /pnl route so both share one deal-history cache entry.
+    start = (today - dt.timedelta(days=PNL_LOOKBACK_DAYS)).isoformat()
     try:
         deals = client.deal_history(start, today.isoformat())
     except MoomooError:
         deals = []
-    return net_pnl(positions, deals)
+    summary = net_pnl(positions, deals, since=start)
+    summary["window"] = {"start": start, "end": today.isoformat(), "days": PNL_LOOKBACK_DAYS}
+    return summary
 
 
 async def _send_daily() -> None:

@@ -117,6 +117,7 @@ class MoomooClient:
         self._quote: mm.OpenQuoteContext | None = None
         self._trade: mm.OpenSecTradeContext | None = None
         self._history_cache: dict[tuple, tuple[float, list[dict]]] = {}
+        self._read_cache: dict[str, tuple[float, Any]] = {}
 
     # -- connection ---------------------------------------------------------
     @property
@@ -184,7 +185,32 @@ class MoomooClient:
         """
         return self._unwrap(self.trade.get_acc_list(), "get_acc_list")
 
+    # position_list_query and accinfo_query are rate-limited to 10 calls per 30
+    # seconds, the same as deal history. The dashboard polls, and switching the
+    # P&L range refetches, so a short TTL collapses bursts into one call and the
+    # last good value is served if the limit is tripped anyway. Without this a
+    # few quick clicks blank the whole dashboard.
+    _READ_TTL = 5.0
+
+    def _cached_read(self, key: str, fetch):
+        now = time.monotonic()
+        hit = self._read_cache.get(key)
+        if hit and now - hit[0] < self._READ_TTL:
+            return hit[1]
+        try:
+            value = fetch()
+        except MoomooError:
+            if hit:
+                log.warning("%s failed; serving cached result", key)
+                return hit[1]
+            raise
+        self._read_cache[key] = (now, value)
+        return value
+
     def account_info(self) -> dict:
+        return self._cached_read("account_info", self._account_info)
+
+    def _account_info(self) -> dict:
         rows = self._unwrap(
             self.trade.accinfo_query(
                 trd_env=TRD_ENV,
@@ -197,6 +223,9 @@ class MoomooClient:
         return rows[0] if rows else {}
 
     def positions(self) -> list[dict]:
+        return self._cached_read("positions", self._positions)
+
+    def _positions(self) -> list[dict]:
         return self._unwrap(
             self.trade.position_list_query(
                 trd_env=TRD_ENV,
