@@ -4,26 +4,29 @@
   starting anything. This does NOT make alerts work while the Mac is off or
   asleep — nothing running locally can do that.
 
+  Before installing, replace /path/to/moomoo-app below with the absolute path
+  to where you cloned this repo.
+
   Install:
-    cp com.hayden.moomoo-sidecar.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/com.hayden.moomoo-sidecar.plist
+    cp local.moomoo-app.sidecar.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/local.moomoo-app.sidecar.plist
 
   Remove:
-    launchctl unload ~/Library/LaunchAgents/com.hayden.moomoo-sidecar.plist
-    rm ~/Library/LaunchAgents/com.hayden.moomoo-sidecar.plist
+    launchctl unload ~/Library/LaunchAgents/local.moomoo-app.sidecar.plist
+    rm ~/Library/LaunchAgents/local.moomoo-app.sidecar.plist
 -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.hayden.moomoo-sidecar</string>
+    <string>local.moomoo-app.sidecar</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>/private/var/my_projects/moomoo-app/run-sidecar.sh</string>
+        <string>/path/to/moomoo-app/run-sidecar.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/private/var/my_projects/moomoo-app</string>
+    <string>/path/to/moomoo-app</string>
 
     <key>RunAtLoad</key>
     <true/>

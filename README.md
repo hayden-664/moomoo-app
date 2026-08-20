@@ -120,7 +120,7 @@ rather than reported as errors.
 
 **Alerts only fire while the sidecar is running on this Mac.** Nothing fires
 when the machine is off or asleep — there is no cloud component, by design.
-`com.hayden.moomoo-sidecar.plist` will auto-start the sidecar at login so you
+`local.moomoo-app.sidecar.plist` will auto-start the sidecar at login so you
 do not have to start it by hand, but a sleeping Mac still sends nothing. It's
 a template — edit the `WorkingDirectory` and script path inside it to match
 where you cloned this repo before loading it with `launchctl`.
