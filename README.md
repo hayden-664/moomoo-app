@@ -25,6 +25,14 @@ crashes the process if `place_order`, `modify_order` or `unlock_trade` ever
 appear in it, and the Next.js proxy uses an explicit route allowlist. Placing
 trades stays in the moomoo app, where it belongs.
 
+## Prerequisites
+
+- **Node.js 20.9+** and npm
+- **Python 3.10+** with `venv` (3.13 is what this was built and tested on)
+- **A moomoo account** with OpenD access (see step 1)
+- macOS or Linux — `start-dev.sh` / `run-sidecar.sh` are bash scripts; on
+  Windows use WSL
+
 ## Setup
 
 ### 1. Install OpenD
@@ -46,6 +54,8 @@ live trading endpoint on the open internet.
 ### 2. Configure
 
 ```bash
+npm install
+npm run setup:sidecar   # creates sidecar/.venv and installs its requirements
 cp .env.example .env
 ```
 
@@ -111,7 +121,9 @@ rather than reported as errors.
 **Alerts only fire while the sidecar is running on this Mac.** Nothing fires
 when the machine is off or asleep — there is no cloud component, by design.
 `com.hayden.moomoo-sidecar.plist` will auto-start the sidecar at login so you
-do not have to start it by hand, but a sleeping Mac still sends nothing.
+do not have to start it by hand, but a sleeping Mac still sends nothing. It's
+a template — edit the `WorkingDirectory` and script path inside it to match
+where you cloned this repo before loading it with `launchctl`.
 
 ## How net P&L is assembled
 
@@ -222,3 +234,7 @@ npm run check:permissions
 | POST | `/notify/test` | Telegram connectivity test |
 
 Interactive docs at <http://localhost:8788/docs>.
+
+## License
+
+[MIT](LICENSE)

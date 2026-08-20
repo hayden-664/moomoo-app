@@ -2,6 +2,7 @@
   "name": "moomoo-app",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "./start-dev.sh",
     "build": "next build",
