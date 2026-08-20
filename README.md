@@ -10,6 +10,19 @@ Next.js 16  ──HTTP──>  Python sidecar  ──TCP──>  OpenD (127.0.0.
 localhost:3000         localhost:8788            holds your logged-in session
 ```
 
+## Screenshots
+
+Fake data — no real account, symbols, or balances. See `docs/screenshots/`.
+
+**Portfolio dashboard** — P&L summary with provenance, positions grouped by
+market, price chart with fill markers:
+
+![Portfolio dashboard](docs/screenshots/dashboard.png)
+
+**Options screener** — mechanical per-contract characterisation, no ranking:
+
+![Options screener](docs/screenshots/options-screener.png)
+
 ## Why a Python sidecar and not the Node SDK
 
 The npm `moomoo-api` package depends on `protobufjs@6`, which carries several
