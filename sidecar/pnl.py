@@ -99,7 +99,11 @@ def summarise_positions(positions: Iterable[dict], base: str = "USD") -> dict[st
         block["today"] += _f(p, "today_pl_val")
         block["market_value"] += _f(p, "market_val")
         qty = _f(p, "qty", "can_sell_qty")
-        block["cost_basis"] += _f(p, "cost_price", "average_cost", "diluted_cost") * qty
+        # average_cost first, deliberately. `cost_price` is the DILUTED basis:
+        # the broker subtracts realized P&L from it, so a position that has been
+        # partly sold reports less than was paid -- and one that has been sold
+        # down hard reports a NEGATIVE cost. Cost basis means money put in.
+        block["cost_basis"] += _f(p, "average_cost", "cost_price", "diluted_cost") * qty
         block["position_count"] += 1
     for block in out.values():
         for key in ("open_unrealized", "open_realized", "today", "market_value", "cost_basis"):

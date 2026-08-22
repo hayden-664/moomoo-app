@@ -32,11 +32,43 @@ const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
   { key: "unrealized_pct", label: "Unrl %", align: "right" },
 ];
 
-/** Unrealized P&L as a percentage of cost basis (qty × cost price). */
-function unrealizedPct(p: Position): number {
-  const costBasis = (p.qty ?? 0) * (p.cost_price ?? 0);
-  if (!costBasis) return 0;
-  return ((p.unrealized_pl ?? p.pl_val ?? 0) / costBasis) * 100;
+/**
+ * What one share actually cost.
+ *
+ * moomoo reports three cost fields and they are not interchangeable.
+ * `cost_price` is the DILUTED cost: realized P&L is subtracted from the basis,
+ * so a position you have taken profit on reports a cost lower than you paid,
+ * and one you have taken a lot out of reports a NEGATIVE cost. A real account
+ * showed AMD at -$440.00 after banking $640 on it, against $200.00 actually
+ * paid.
+ *
+ * `average_cost` is the average price paid, which is what moomoo's own app
+ * displays and what `unrealized_pl` is measured against. Using it is what makes
+ * a row reconcile: cost × qty + unrealized = value.
+ */
+function unitCost(p: Position): number | null {
+  // The broker sets this false when it cannot establish a basis at all —
+  // transferred-in shares, some corporate actions. Show nothing rather than a
+  // number that looks authoritative.
+  if (p.cost_price_valid === false) return null;
+  return p.average_cost ?? p.cost_price;
+}
+
+/** Money actually put into the position. Null when there is no usable basis. */
+function costBasis(p: Position): number | null {
+  const unit = unitCost(p);
+  if (unit === null || unit === undefined) return null;
+  const basis = (p.qty ?? 0) * unit;
+  // A non-positive basis makes the percentage meaningless, and a negative one
+  // silently flips its sign — which is how AMD showed +$273.25 as -62.10%.
+  return basis > 0 ? basis : null;
+}
+
+/** Unrealized P&L as a percentage of what was paid. */
+function unrealizedPct(p: Position): number | null {
+  const basis = costBasis(p);
+  if (basis === null) return null;
+  return ((p.unrealized_pl ?? p.pl_val ?? 0) / basis) * 100;
 }
 
 function sortValue(p: Position, key: SortKey): number | string {
@@ -46,7 +78,7 @@ function sortValue(p: Position, key: SortKey): number | string {
     case "unrealized_pl":
       return p.unrealized_pl ?? p.pl_val ?? 0;
     case "unrealized_pct":
-      return unrealizedPct(p);
+      return unrealizedPct(p) ?? 0;
     default:
       return p[key] ?? 0;
   }
@@ -125,7 +157,7 @@ export default function PositionsTable({ positions, selected, onSelect }: Props)
               </td>
               <td className="tnum px-3 py-2 text-right">{p.qty ?? "—"}</td>
               <td className="tnum px-3 py-2 text-right">
-                <Money value={p.cost_price} currency={p.currency ?? "USD"} />
+                <Money value={unitCost(p)} currency={p.currency ?? "USD"} />
               </td>
               <td className="tnum px-3 py-2 text-right">
                 <Money value={p.nominal_price} currency={p.currency ?? "USD"} />
@@ -146,7 +178,11 @@ export default function PositionsTable({ positions, selected, onSelect }: Props)
               </td>
               <td
                 className={`tnum px-3 py-2 text-right ${
-                  unrealizedPct(p) > 0 ? "text-pos" : unrealizedPct(p) < 0 ? "text-neg" : ""
+                  (unrealizedPct(p) ?? 0) > 0
+                    ? "text-pos"
+                    : (unrealizedPct(p) ?? 0) < 0
+                      ? "text-neg"
+                      : ""
                 }`}
               >
                 {pct(unrealizedPct(p))}

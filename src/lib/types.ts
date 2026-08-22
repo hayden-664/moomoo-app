@@ -3,10 +3,20 @@ export type Position = {
   stock_name: string;
   qty: number;
   can_sell_qty: number;
+  /**
+   * DILUTED cost — realized P&L subtracted from the basis, so it can sit below
+   * what was paid, or go negative. Prefer `average_cost` for display.
+   */
   cost_price: number | null;
+  /** False when the broker cannot establish a basis; `cost_price` is then junk. */
+  cost_price_valid: boolean | null;
+  /** Average price actually paid. What moomoo's own app shows. */
+  average_cost: number | null;
+  diluted_cost: number | null;
   nominal_price: number | null;
   market_val: number | null;
   pl_val: number | null;
+  pl_val_valid: boolean | null;
   pl_ratio: number | null;
   today_pl_val: number | null;
   unrealized_pl: number | null;
