@@ -19,7 +19,8 @@ from fastapi.responses import JSONResponse
 import klines
 import scheduler
 import telegram
-from config import PNL_LOOKBACK_DAYS, SIDECAR_HOST, SIDECAR_PORT, TRD_MARKET
+from config import CURRENCY, PNL_LOOKBACK_DAYS, SIDECAR_HOST, SIDECAR_PORT, TRD_MARKET
+from currency import account_breakdown, currencies_in
 from moomoo_client import MoomooError, OpendUnreachable, client, opend_reachable
 from pnl import net_pnl
 from screener import screen
@@ -137,12 +138,63 @@ def accounts() -> list[dict]:
 
 @app.get("/account")
 def account() -> dict:
-    return client.account_info()
+    """Balances, with the reporting-currency totals split back per currency.
+
+    ``total_assets``, ``cash``, ``market_val`` and ``power`` come back already
+    converted into MOOMOO_CURRENCY, so on a multi-currency account they read as
+    pure base currency while quietly containing a foreign balance. The split
+    and the FX rate implied by it are attached so the UI can show both.
+    """
+    acct = client.account_info()
+    return {**acct, "currency_split": account_breakdown(acct, base=CURRENCY)}
 
 
 @app.get("/positions")
 def positions() -> list[dict]:
     return client.positions()
+
+
+def _fx_rates(rows: list[dict]) -> tuple[dict[str, float], str]:
+    """Rates for converting *rows* into MOOMOO_CURRENCY, and where they came from.
+
+    Primary source is the broker's own conversion rate, read by asking
+    ``accinfo_query`` for the same total in each currency and dividing (cached
+    60s). OpenD serves no forex quotes to ask instead -- the FX market returns
+    "Unsupported quote market" and carries no entitlement.
+
+    The fallback solves the rate out of a single payload's per-currency fields,
+    which only works when exactly one foreign currency holds a balance.
+
+    A currency neither source can price is simply absent from the result:
+    ``net_pnl`` leaves it out of the totals and names it in ``conversion``,
+    rather than folding it in at face value.
+    """
+    live_src = "moomoo's own conversion rate, read live from the account"
+    implied_src = "inferred from the broker's conversion of total assets"
+
+    foreign = [c for c in currencies_in(rows, CURRENCY) if c != CURRENCY]
+    if not foreign:
+        return {}, live_src
+
+    try:
+        live = client.fx_rates(CURRENCY, foreign)
+    except MoomooError as exc:
+        log.warning("live FX rate unavailable: %s", exc)
+        live = {}
+    missing = [c for c in foreign if c not in live]
+    if not missing:
+        return live, live_src
+
+    try:
+        implied = account_breakdown(client.account_info(), base=CURRENCY)["implied_fx"]
+    except MoomooError as exc:
+        log.warning("fallback FX rate unavailable: %s", exc)
+        implied = {}
+    # Live wins wherever both have an answer.
+    merged = {**{c: r for c, r in implied.items() if c in missing}, **live}
+    if not merged:
+        return {}, "unavailable"
+    return merged, live_src if not implied else f"{live_src}; {implied_src} where unavailable"
 
 
 @app.get("/pnl")
@@ -163,7 +215,10 @@ def pnl(days: int = Query(PNL_LOOKBACK_DAYS, ge=1, le=PNL_LOOKBACK_DAYS)) -> dic
         # to open-position P&L rather than losing the whole response.
         log.warning("deal history unavailable: %s", exc)
         deals = []
-    summary = net_pnl(positions, deals, since=start)
+    rates, rate_source = _fx_rates(positions + deals)
+    summary = net_pnl(
+        positions, deals, since=start, base=CURRENCY, rates=rates, rate_source=rate_source
+    )
     in_window = [d for d in deals if str(d.get("create_time") or "")[:10] >= start]
     summary["window"] = {
         "start": start,
@@ -172,7 +227,9 @@ def pnl(days: int = Query(PNL_LOOKBACK_DAYS, ge=1, le=PNL_LOOKBACK_DAYS)) -> dic
         "deals": len(in_window),
         "matched_from": full_start,
     }
-    summary["position_count"] = len(positions)
+    # position_count on the promoted top level counts the base currency only,
+    # matching the net beside it; the whole-account count is separate.
+    summary["total_position_count"] = len(positions)
     return summary
 
 

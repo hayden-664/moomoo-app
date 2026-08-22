@@ -32,6 +32,33 @@ history. Never present the derived `closed_realized` as broker truth — it
 excludes fees, dividends and corporate actions. If you add P&L surfaces, carry
 the approximate/derived labelling with them.
 
+# Currencies are converted before they are summed, never after
+
+This account settles in USD *and* MYR. `pnl.py` buckets every figure by
+settlement currency, converts each bucket into `MOOMOO_CURRENCY`, then sums.
+Adding buckets without converting them is the bug this was written to fix — a
+Bursa round-trip counted as dollars, invisible because the mixed-currency flag
+was derived from open positions and that position was already closed.
+
+`currency_of()` recovers a deal row's currency from `deal_market`; deal rows
+have no `currency` field, which is what made the mixing look unavoidable.
+
+The rate is moomoo's own. There is no forex feed to quote — the `FX` market
+returns "Unsupported quote market" and no entitlement exists for it — but
+`accinfo_query` converts the whole account into whichever currency it is asked
+for, so `MoomooClient.fx_rates()` asks twice and divides the `total_assets`.
+Do not replace this with an external FX API without saying so: it would stop
+the dashboard reconciling with moomoo's own numbers.
+
+`currency.account_breakdown()`'s `implied_fx` is the fallback only. It solves
+one equation from a single payload, so it needs exactly one foreign currency to
+hold a balance. When neither source can price a currency it goes into
+`conversion.unconverted` and is left out of the totals — never folded in at
+1:1. Keep that behaviour and keep it visible in the UI.
+
+Realized figures are converted at today's rate, not the trade-date rate. Carry
+that caveat wherever you present them.
+
 # The screener describes, it does not advise
 
 `characterise()` in `sidecar/screener.py` emits factual contract mechanics —

@@ -19,7 +19,7 @@ import logging
 import socket
 import threading
 import time
-from typing import Any
+from typing import Any, Iterable
 
 import moomoo as mm
 import pandas as pd
@@ -118,6 +118,7 @@ class MoomooClient:
         self._trade: mm.OpenSecTradeContext | None = None
         self._history_cache: dict[tuple, tuple[float, list[dict]]] = {}
         self._read_cache: dict[str, tuple[float, Any]] = {}
+        self._fx_cache: dict[tuple, tuple[float, dict[str, float]]] = {}
 
     # -- connection ---------------------------------------------------------
     @property
@@ -207,20 +208,90 @@ class MoomooClient:
         self._read_cache[key] = (now, value)
         return value
 
-    def account_info(self) -> dict:
-        return self._cached_read("account_info", self._account_info)
+    def account_info(self, currency: str | None = None) -> dict:
+        """Balances, converted by the broker into *currency* (default CURRENCY).
 
-    def _account_info(self) -> dict:
+        Cached per currency: asking for a second one is a second call against
+        the same 10-per-30s budget, so it must not share a slot with the first.
+        """
+        ccy = (currency or CURRENCY).upper()
+        return self._cached_read(f"account_info:{ccy}", lambda: self._account_info(ccy))
+
+    def _account_info(self, currency: str) -> dict:
         rows = self._unwrap(
             self.trade.accinfo_query(
                 trd_env=TRD_ENV,
                 **_acc_kwargs(),
                 refresh_cache=True,
-                currency=CURRENCY,
+                currency=currency,
             ),
-            "accinfo_query",
+            f"accinfo_query({currency})",
         )
         return rows[0] if rows else {}
+
+    # FX rates move slowly, and accinfo_query shares the 10-per-30s budget with
+    # the dashboard's own polling. A minute of staleness is invisible on a P&L
+    # figure and keeps the extra per-currency call well clear of the limit.
+    _FX_TTL = 60.0
+
+    def fx_rates(self, base: str, currencies: Iterable[str]) -> dict[str, float]:
+        """Value of one unit of each currency in *base*, per the broker itself.
+
+        ``accinfo_query`` converts the whole account into whichever currency it
+        is asked for, so the ratio of the same ``total_assets`` in two
+        currencies *is* the rate moomoo is using -- its live conversion rate,
+        read directly rather than inferred.
+
+        This is the reason to prefer it over
+        ``currency.account_breakdown``'s ``implied_fx``: that one solves one
+        equation from a single payload and therefore only works when exactly
+        one foreign currency holds a balance. This works for any currency the
+        SDK supports, including ones the account holds nothing in.
+
+        OpenD has no forex quote feed to ask instead -- the FX market returns
+        "Unsupported quote market" and there is no entitlement for it.
+        """
+        wanted = tuple(sorted({c.upper() for c in currencies} - {base.upper()}))
+        if not wanted:
+            return {}
+        key = (base.upper(), wanted)
+        now = time.monotonic()
+        hit = self._fx_cache.get(key)
+        if hit and now - hit[0] < self._FX_TTL:
+            return hit[1]
+        try:
+            rates = self._fx_rates(base.upper(), wanted)
+        except MoomooError:
+            if hit:
+                log.warning("FX rate fetch failed; serving cached rates")
+                return hit[1]
+            raise
+        self._fx_cache[key] = (now, rates)
+        return rates
+
+    def _fx_rates(self, base: str, currencies: tuple[str, ...]) -> dict[str, float]:
+        def total(ccy: str) -> float:
+            try:
+                return float(self.account_info(ccy).get("total_assets") or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        base_total = total(base)
+        if not base_total:
+            # An empty account gives no ratio to read a rate out of. Report
+            # nothing rather than a rate of zero.
+            return {}
+        out: dict[str, float] = {}
+        for ccy in currencies:
+            # The SDK rejects a currency it does not know, and a zero total
+            # would divide by zero; skip both rather than raising.
+            if not hasattr(mm.Currency, ccy):
+                log.warning("no SDK Currency for %s; leaving it unconverted", ccy)
+                continue
+            foreign_total = total(ccy)
+            if foreign_total:
+                out[ccy] = base_total / foreign_total
+        return out
 
     def positions(self) -> list[dict]:
         return self._cached_read("positions", self._positions)

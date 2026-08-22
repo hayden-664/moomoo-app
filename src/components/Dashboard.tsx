@@ -176,10 +176,15 @@ export default function Dashboard() {
                 <span className="font-medium uppercase tracking-wide text-foreground">{market}</span>
                 <span>
                   {rows.length} {rows.length === 1 ? "position" : "positions"} ·{" "}
+                  {/* Every row in a market shares its settlement currency, so this
+                      subtotal is a single-currency sum even though the page is not. */}
                   {fmt(
                     rows.reduce((s, p) => s + (p.market_val ?? 0), 0),
                     rows[0].currency ?? "USD",
                   )}
+                </span>
+                <span className="rounded bg-border/60 px-1 py-px text-[10px] font-medium tracking-wide">
+                  {rows[0].currency ?? "USD"}
                 </span>
               </div>
               <PositionsTable

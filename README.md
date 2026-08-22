@@ -118,7 +118,7 @@ The scheduler runs inside the sidecar. Configure in `.env`:
 |---|---|
 | `ALERT_DAILY_TIME` | Time of the daily summary, local, `HH:MM` |
 | `ALERT_DAYS` | `mon-fri`, `daily`, or a list like `mon,wed,fri` |
-| `ALERT_MOVE_ABS` | Message when net P&L moves this many dollars since the last alert. `0` disables |
+| `ALERT_MOVE_ABS` | Message when net P&L moves this much since the last alert, in `MOOMOO_CURRENCY`. `0` disables |
 | `ALERT_CHECK_MINUTES` | How often the move check runs |
 | `ALERTS_ENABLED` | `false` to silence everything |
 | `ALERT_SCREEN_ENABLED` | Daily options screen digest |
@@ -156,6 +156,51 @@ tracked separately, options multiplied by contract size). It excludes
 commissions, dividends and corporate actions, and is only as complete as the
 history window queried. The UI labels it as approximate — don't reconcile
 your taxes against it.
+
+### Currencies are converted before they are summed
+
+The account settles US positions in USD and Bursa positions in MYR. Figures are
+bucketed by settlement currency, converted into `MOOMOO_CURRENCY`, then summed —
+so the dashboard shows one comparable total. Deal rows carry no `currency`
+field, but they carry `deal_market`, and the market determines the currency;
+without that a Bursa round-trip lands in the dollar total untouched.
+
+`/pnl` returns the converted totals at the top level, the unconverted
+per-currency figures under `by_currency`, and a `conversion` block naming the
+rate used.
+
+**Where the rate comes from.** OpenD serves no forex quotes — the `FX` market
+answers `Unsupported quote market` and the account carries no entitlement for
+it. But `accinfo_query` converts the *whole account* into whatever currency it
+is asked for, so asking twice and dividing the two `total_assets` gives
+moomoo's own live conversion rate exactly:
+
+```
+rate(MYR→USD) = total_assets(in USD) / total_assets(in MYR)
+```
+
+That is `MoomooClient.fx_rates()`. It works for any currency the SDK supports
+(`USD HKD CNH JPY SGD AUD CAD MYR NZD`), including ones the account holds
+nothing in, and it keeps the dashboard reconciled with moomoo's own figures.
+Sanity check: the same method returns 7.8399 for HKD, inside the peg band.
+
+Rates are cached for 60s — `accinfo_query` shares the 10-calls-per-30s budget
+with the dashboard's polling, and FX does not move fast enough for the
+staleness to matter.
+
+Two caveats travel with it:
+
+- **Fallback.** If the live read fails, `account_breakdown()` recovers the rate
+  from a single payload as `(total_assets - <base>_assets) / <foreign>_assets`.
+  That only works when exactly one foreign currency holds a balance. A currency
+  neither source can price is listed in `conversion.unconverted` and left
+  **out** of the totals rather than added at face value.
+- **Realized P&L uses today's rate**, not the rate on the trade date. The broker
+  reports no historical rates, so a MYR gain banked months ago is restated in
+  today's dollars and drifts with the currency.
+
+`/account` also attaches a `currency_split` with the untouched per-currency
+balances and the fallback rate.
 
 ## Options screener
 

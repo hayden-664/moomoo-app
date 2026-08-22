@@ -26,7 +26,8 @@ import os
 import pathlib
 
 import telegram
-from config import PNL_LOOKBACK_DAYS
+from config import CURRENCY, PNL_LOOKBACK_DAYS
+from currency import currencies_in
 from moomoo_client import MoomooError, OpendUnreachable, client
 from pnl import net_pnl
 from screener import screen
@@ -110,7 +111,11 @@ def _snapshot() -> dict:
         deals = client.deal_history(start, today.isoformat())
     except MoomooError:
         deals = []
-    summary = net_pnl(positions, deals, since=start)
+    try:
+        rates = client.fx_rates(CURRENCY, currencies_in(positions + deals, CURRENCY))
+    except MoomooError:
+        rates = {}  # foreign figures stay out of the totals rather than being guessed
+    summary = net_pnl(positions, deals, since=start, base=CURRENCY, rates=rates)
     summary["window"] = {"start": start, "end": today.isoformat(), "days": PNL_LOOKBACK_DAYS}
     return summary
 

@@ -42,26 +42,51 @@ async def notify(text: str, *, silent: bool = False) -> dict:
     return {"sent": True}
 
 
+# Enough to keep a MYR figure from reading as dollars. Anything not listed
+# falls back to the ISO code, which is unambiguous if less pretty.
+_SYMBOLS = {"USD": "$", "MYR": "RM", "HKD": "HK$", "SGD": "S$", "CNH": "\u00a5", "JPY": "\u00a5"}
+
+
+def money(value: float, currency: str = "USD") -> str:
+    sym = _SYMBOLS.get(currency)
+    return f"{sym}{value:,.2f}" if sym else f"{currency} {value:,.2f}"
+
+
 def format_pnl(summary: dict, account: dict | None = None) -> str:
-    """Render the net P&L block as a Telegram HTML message."""
-    net = summary["net"]
+    """Render the net P&L block as a Telegram HTML message.
+
+    Every figure is one total in the reporting currency, with foreign holdings
+    converted first. The rate is stated so the number is reproducible, and a
+    currency that could not be converted is named rather than dropped quietly.
+    """
+    base = summary.get("base", "USD")
+    conv = summary.get("conversion") or {}
     o = summary["open"]
-    arrow = "🟢" if net >= 0 else "🔴"
+    arrow = "\U0001f7e2" if summary["net"] >= 0 else "\U0001f534"
+
     lines = [
-        f"{arrow} <b>Net P&amp;L: ${net:,.2f}</b>",
+        f"{arrow} <b>Net P&amp;L: {money(summary['net'], base)}</b>",
         "",
-        f"Today: ${o['today']:,.2f}",
-        f"Open unrealized: ${o['open_unrealized']:,.2f}",
+        f"Today: {money(o['today'], base)}",
+        f"Open unrealized: {money(o['open_unrealized'], base)}",
         # The window matters: anything sold before it is not in this figure.
-        f"Realized: ${summary['total_realized']:,.2f} "
+        f"Realized: {money(summary['total_realized'], base)} "
         f"<i>(approx, since {summary['window']['start']})</i>",
         "",
-        f"Market value: ${o['market_value']:,.2f}",
+        f"Market value: {money(o['market_value'], base)}",
     ]
-    if account:
-        total = account.get("total_assets")
-        if total:
-            lines.append(f"Total assets: ${float(total):,.2f}")
+    if account and account.get("total_assets"):
+        lines.append(f"Total assets: {money(float(account['total_assets']), base)}")
+
+    rates = conv.get("rates") or {}
+    for ccy in conv.get("converted_from") or []:
+        rate = rates.get(ccy)
+        if rate:
+            lines.append(f"<i>{ccy} converted at 1 {base} = {1 / rate:,.4f} {ccy}</i>")
+    if conv.get("unconverted"):
+        lines.append(
+            f"\u26a0\ufe0f <i>{', '.join(conv['unconverted'])} excluded \u2014 no rate available</i>"
+        )
     return "\n".join(lines)
 
 

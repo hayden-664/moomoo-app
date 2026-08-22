@@ -56,7 +56,14 @@ async def permissions() -> dict:
     return await _get("permissions")
 
 
-@mcp.tool(description="Account balances: total assets, cash, market value, buying power, margin.")
+@mcp.tool(
+    description=(
+        "Account balances: total assets, cash, market value, buying power, margin. "
+        "total_assets/cash/market_val/power are converted into the reporting "
+        "currency by the broker; `currency_split` carries the untouched "
+        "per-currency balances and the FX rate that conversion implies."
+    )
+)
 async def account() -> dict:
     return await _get("account")
 
@@ -74,7 +81,14 @@ async def positions() -> list | dict:
         "`partial.partial_realized` (banked from selling part of a holding still "
         "owned). `open.open_unrealized` is broker-reported mark-to-market; the "
         "realized figures are DERIVED by FIFO-matching deal history and exclude "
-        "fees, dividends and corporate actions — always describe them as approximate."
+        "fees, dividends and corporate actions — always describe them as approximate.\n\n"
+        "Top-level figures are every currency converted into `base` and summed. "
+        "`by_currency` holds the same figures unconverted, per settlement "
+        "currency. `conversion` names the rate used and where it came from; "
+        "realized figures use today's rate rather than the trade-date rate, so "
+        "describe converted totals accordingly. Anything in "
+        "`conversion.unconverted` is EXCLUDED from the totals; say so if it is "
+        "non-empty."
     )
 )
 async def pnl(days: int = 365) -> dict:

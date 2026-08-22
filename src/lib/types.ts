@@ -12,20 +12,23 @@ export type Position = {
   unrealized_pl: number | null;
   realized_pl: number | null;
   position_side: string | null;
+  position_market: string | null;
   /** Denomination moomoo reports for this row; not always the account currency. */
   currency: string | null;
 };
 
 export type OpenPnl = {
+  currency: string;
   open_unrealized: number;
   open_realized: number;
   today: number;
   market_value: number;
   cost_basis: number;
-  currencies: string[];
+  position_count: number;
 };
 
 export type ClosedPnl = {
+  currency: string;
   closed_realized: number;
   by_symbol: Record<string, number>;
   /** Derived by FIFO-matching deal history, not reported by the broker. */
@@ -35,6 +38,7 @@ export type ClosedPnl = {
 
 /** Banked by selling part of a holding you still own. Derived, like ClosedPnl. */
 export type PartialPnl = {
+  currency: string;
   partial_realized: number;
   by_symbol: Record<string, number>;
   approximate: true;
@@ -43,13 +47,42 @@ export type PartialPnl = {
   counted_in_net: boolean;
 };
 
-export type Pnl = {
+/** Every P&L figure for one settlement currency. Never mixed with another. */
+export type CurrencyPnl = {
+  currency: string;
   net: number;
   /** Everything cashed out: closed round-trips plus partial sells. */
   total_realized: number;
   open: OpenPnl;
   closed: ClosedPnl;
   partial: PartialPnl;
+  position_count: number;
+};
+
+/** How foreign figures were folded into the reporting currency. */
+export type Conversion = {
+  base: string;
+  /** Value of one unit of each currency in `base`; base itself is 1. */
+  rates: Record<string, number>;
+  /** Non-base currencies actually converted and included in the totals. */
+  converted_from: string[];
+  /** Currencies with no available rate — excluded from the totals, not zeroed. */
+  unconverted: string[];
+  /** Human-readable provenance of the rate, rendered directly in the UI. */
+  source: string;
+  note: string;
+};
+
+export type Pnl = Omit<CurrencyPnl, "currency"> & {
+  /** Reporting currency. The top-level figures are everything converted into it. */
+  base: string;
+  /** Every currency with money in it, base included. */
+  currencies: string[];
+  /** True when >1 currency is present. The totals are converted either way. */
+  mixed_currency: boolean;
+  /** The same figures per currency, unconverted. */
+  by_currency: Record<string, CurrencyPnl>;
+  conversion: Conversion;
   window: {
     start: string;
     end: string;
@@ -58,11 +91,29 @@ export type Pnl = {
     /** Deals are matched from here even when reporting starts later. */
     matched_from: string;
   };
-  position_count: number;
-  /** Denominations seen across open positions. */
-  currencies: string[];
-  /** True when figures span >1 currency, which makes the totals uncomparable. */
-  mixed_currency: boolean;
+  /** Open positions the broker reported, including any left unconverted. */
+  total_position_count: number;
+};
+
+/** One currency's balances, exactly as the broker holds them — unconverted. */
+export type CurrencyBalance = {
+  currency: string;
+  cash: number | null;
+  assets: number | null;
+  avl_withdrawal_cash: number | null;
+  net_cash_power: number | null;
+  /** 1 unit of this currency in base. Null when the rate is not solvable. */
+  rate_to_base: number | null;
+  assets_in_base: number | null;
+};
+
+export type CurrencySplit = {
+  base: string;
+  by_currency: Record<string, CurrencyBalance>;
+  /** Read back out of the broker's own conversion, not quoted directly. */
+  implied_fx: Record<string, number>;
+  /** Account fields that arrive already converted into `base`. */
+  converted_fields: string[];
 };
 
 export type Account = {
@@ -75,7 +126,9 @@ export type Account = {
   avl_withdrawal_cash: number | null;
   power: number | null;
   risk_status: string | null;
+  /** Reporting currency the totals above were converted into. */
   currency: string | null;
+  currency_split: CurrencySplit;
 };
 
 export type OptionCandidate = {
