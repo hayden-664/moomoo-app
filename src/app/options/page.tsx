@@ -1,5 +1,5 @@
-import OptionScreener from "@/components/OptionScreener";
+import OptionScreener from "@/components/OptionScreener"
 
 export default function Page() {
-  return <OptionScreener />;
+  return <OptionScreener />
 }

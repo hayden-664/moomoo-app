@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
-import type { Position } from "@/lib/types";
-import Money, { pct } from "./Money";
+import { useMemo, useState } from "react"
+import type { Position } from "@/lib/types"
+import Money, { pct } from "./Money"
 
 type Props = {
-  positions: Position[];
+  positions: Position[]
   /** Code of the row whose chart is open, if any. */
-  selected?: string | null;
-  onSelect?: (code: string) => void;
-};
+  selected?: string | null
+  onSelect?: (code: string) => void
+}
 
 type SortKey =
   | "code"
@@ -17,9 +17,9 @@ type SortKey =
   | "market_val"
   | "today_pl_val"
   | "unrealized_pl"
-  | "unrealized_pct";
+  | "unrealized_pct"
 
-type SortDir = "asc" | "desc";
+type SortDir = "asc" | "desc"
 
 const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
   { key: "code", label: "Symbol", align: "left" },
@@ -30,7 +30,7 @@ const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
   { key: "today_pl_val", label: "Today", align: "right" },
   { key: "unrealized_pl", label: "Unrealized", align: "right" },
   { key: "unrealized_pct", label: "Unrl %", align: "right" },
-];
+]
 
 /**
  * What one share actually cost.
@@ -50,70 +50,74 @@ function unitCost(p: Position): number | null {
   // The broker sets this false when it cannot establish a basis at all —
   // transferred-in shares, some corporate actions. Show nothing rather than a
   // number that looks authoritative.
-  if (p.cost_price_valid === false) return null;
-  return p.average_cost ?? p.cost_price;
+  if (p.cost_price_valid === false) return null
+  return p.average_cost ?? p.cost_price
 }
 
 /** Money actually put into the position. Null when there is no usable basis. */
 function costBasis(p: Position): number | null {
-  const unit = unitCost(p);
-  if (unit === null || unit === undefined) return null;
-  const basis = (p.qty ?? 0) * unit;
+  const unit = unitCost(p)
+  if (unit === null || unit === undefined) return null
+  const basis = (p.qty ?? 0) * unit
   // A non-positive basis makes the percentage meaningless, and a negative one
   // silently flips its sign — which is how AMD showed +$273.25 as -62.10%.
-  return basis > 0 ? basis : null;
+  return basis > 0 ? basis : null
 }
 
 /** Unrealized P&L as a percentage of what was paid. */
 function unrealizedPct(p: Position): number | null {
-  const basis = costBasis(p);
-  if (basis === null) return null;
-  return ((p.unrealized_pl ?? p.pl_val ?? 0) / basis) * 100;
+  const basis = costBasis(p)
+  if (basis === null) return null
+  return ((p.unrealized_pl ?? p.pl_val ?? 0) / basis) * 100
 }
 
 function sortValue(p: Position, key: SortKey): number | string {
   switch (key) {
     case "code":
-      return p.code;
+      return p.code
     case "unrealized_pl":
-      return p.unrealized_pl ?? p.pl_val ?? 0;
+      return p.unrealized_pl ?? p.pl_val ?? 0
     case "unrealized_pct":
-      return unrealizedPct(p) ?? 0;
+      return unrealizedPct(p) ?? 0
     default:
-      return p[key] ?? 0;
+      return p[key] ?? 0
   }
 }
 
-export default function PositionsTable({ positions, selected, onSelect }: Props) {
-  const [sortKey, setSortKey] = useState<SortKey>("market_val");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+export default function PositionsTable({
+  positions,
+  selected,
+  onSelect,
+}: Props) {
+  const [sortKey, setSortKey] = useState<SortKey>("market_val")
+  const [sortDir, setSortDir] = useState<SortDir>("desc")
 
   const sorted = useMemo(() => {
-    const dir = sortDir === "asc" ? 1 : -1;
+    const dir = sortDir === "asc" ? 1 : -1
     return [...positions].sort((a, b) => {
-      const av = sortValue(a, sortKey);
-      const bv = sortValue(b, sortKey);
+      const av = sortValue(a, sortKey)
+      const bv = sortValue(b, sortKey)
       if (typeof av === "string" || typeof bv === "string") {
-        return dir * String(av).localeCompare(String(bv));
+        return dir * String(av).localeCompare(String(bv))
       }
-      return dir * (av - bv);
-    });
-  }, [positions, sortKey, sortDir]);
+      return dir * (av - bv)
+    })
+  }, [positions, sortKey, sortDir])
 
   if (positions.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-surface p-8 text-center text-sm text-muted">
         No open positions.
       </div>
-    );
+    )
   }
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
     } else {
-      setSortKey(key);
-      setSortDir(key === "code" ? "asc" : "desc");
+      setSortKey(key)
+      setSortDir(key === "code" ? "asc" : "desc")
     }
   }
 
@@ -123,11 +127,20 @@ export default function PositionsTable({ positions, selected, onSelect }: Props)
         <thead>
           <tr className="border-b border-border bg-surface text-left text-xs uppercase tracking-wide text-muted">
             {columns.map((col) => (
-              <th key={col.key} className={`px-3 py-2 font-medium ${col.align === "right" ? "text-right" : ""}`}>
+              <th
+                key={col.key}
+                className={`px-3 py-2 font-medium ${col.align === "right" ? "text-right" : ""}`}
+              >
                 <button
                   type="button"
                   onClick={() => handleSort(col.key)}
-                  aria-sort={sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                  aria-sort={
+                    sortKey === col.key
+                      ? sortDir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
                   className={`inline-flex items-center gap-1 hover:text-foreground ${
                     col.align === "right" ? "flex-row-reverse" : ""
                   } ${sortKey === col.key ? "text-foreground" : ""}`}
@@ -153,7 +166,9 @@ export default function PositionsTable({ positions, selected, onSelect }: Props)
             >
               <td className="px-3 py-2">
                 <div className="font-medium">{p.code}</div>
-                <div className="truncate text-xs text-muted">{p.stock_name}</div>
+                <div className="truncate text-xs text-muted">
+                  {p.stock_name}
+                </div>
               </td>
               <td className="tnum px-3 py-2 text-right">{p.qty ?? "—"}</td>
               <td className="tnum px-3 py-2 text-right">
@@ -166,7 +181,12 @@ export default function PositionsTable({ positions, selected, onSelect }: Props)
                 <Money value={p.market_val} currency={p.currency ?? "USD"} />
               </td>
               <td className="px-3 py-2 text-right">
-                <Money value={p.today_pl_val} currency={p.currency ?? "USD"} signed showSign />
+                <Money
+                  value={p.today_pl_val}
+                  currency={p.currency ?? "USD"}
+                  signed
+                  showSign
+                />
               </td>
               <td className="px-3 py-2 text-right">
                 <Money
@@ -192,5 +212,5 @@ export default function PositionsTable({ positions, selected, onSelect }: Props)
         </tbody>
       </table>
     </div>
-  );
+  )
 }

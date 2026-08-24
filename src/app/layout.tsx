@@ -1,15 +1,18 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import "./globals.css";
+import type { Metadata } from "next"
+import { Geist, Geist_Mono } from "next/font/google"
+import Link from "next/link"
+import "./globals.css"
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] })
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+})
 
 export const metadata: Metadata = {
   title: "moomoo",
   description: "Read-only moomoo portfolio dashboard and options screener",
-};
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -32,8 +35,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </span>
           </div>
         </nav>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-6">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-6">
+          {children}
+        </main>
       </body>
     </html>
-  );
+  )
 }
