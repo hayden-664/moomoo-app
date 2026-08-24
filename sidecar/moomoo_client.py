@@ -193,10 +193,10 @@ class MoomooClient:
     # few quick clicks blank the whole dashboard.
     _READ_TTL = 5.0
 
-    def _cached_read(self, key: str, fetch):
+    def _cached_read(self, key: str, fetch, ttl: float | None = None):
         now = time.monotonic()
         hit = self._read_cache.get(key)
-        if hit and now - hit[0] < self._READ_TTL:
+        if hit and now - hit[0] < (self._READ_TTL if ttl is None else ttl):
             return hit[1]
         try:
             value = fetch()
@@ -382,6 +382,84 @@ class MoomooClient:
             )
         return out
 
+
+    # -- research reads -----------------------------------------------------
+    # These describe securities the account does not hold, so nothing here is
+    # position-derived and none of it needs the trade context. Research data
+    # changes far more slowly than a quote, so it is cached for longer than the
+    # 5s account reads -- these calls share the same 10-per-30s budget.
+    _RESEARCH_TTL = 900.0
+
+    @staticmethod
+    def _unwrap_any(result: tuple[int, Any], what: str) -> Any:
+        """``_unwrap`` for the research calls, whose payload shape varies.
+
+        Most return a DataFrame, some a plain dict, and the ranked/paged ones
+        an ``(all_count, DataFrame)`` tuple. Normalising here keeps every
+        caller in ``research.py`` free of shape checks.
+
+        The result tuple itself is not a fixed width either: ``get_economic_
+        calendar`` appends its paging cursor, so only the first two slots can
+        be relied on. Trailing cursors are dropped -- every caller here asks
+        for a window small enough to fit one page.
+        """
+        ret, payload = result[0], result[1]
+        if ret != mm.RET_OK:
+            raise MoomooError(f"{what} failed: {payload}")
+        if isinstance(payload, tuple) and len(payload) == 2 and isinstance(payload[1], pd.DataFrame):
+            count, frame = payload
+            return {
+                "total": count,
+                "rows": frame.replace({float("nan"): None}).to_dict(orient="records"),
+            }
+        if isinstance(payload, pd.DataFrame):
+            return payload.replace({float("nan"): None}).to_dict(orient="records")
+        return payload
+
+    def research(self, what: str, call, ttl: float | None = None) -> Any:
+        """Run a quote-context research call, cached and fail-fast on OpenD.
+
+        ``call`` receives the quote context. Every research entry point goes
+        through here so that none of them can bypass ``require_opend`` and
+        block the thread for as long as OpenD stays down.
+        """
+        def fetch():
+            require_opend()
+            return self._unwrap_any(call(self.quote), what)
+
+        return self._cached_read(
+            f"research:{what}", fetch, self._RESEARCH_TTL if ttl is None else ttl
+        )
+
+    def stock_filter(
+        self, market: str, filters: list, begin: int, num: int, plate: str | None = None
+    ) -> dict:
+        """``get_stock_filter``, whose payload is a 3-tuple of its own.
+
+        Results are ``FilterStockData`` objects that stash values in
+        ``__dict__`` -- keyed by plain strings for simple fields but by tuples
+        for the accumulate/financial ones (field, days) / (field, quarter).
+        Those tuple keys are not JSON-serialisable, so they are flattened.
+        """
+        require_opend()
+        ret, payload = self.quote.get_stock_filter(
+            market=market, filter_list=filters, plate_code=plate, begin=begin, num=num
+        )
+        if ret != mm.RET_OK:
+            raise MoomooError(f"get_stock_filter failed: {payload}")
+        last_page, all_count, rows = payload
+        return {
+            "total": all_count,
+            "last_page": last_page,
+            "rows": [
+                {
+                    ("_".join(str(p) for p in k) if isinstance(k, tuple) else k): v
+                    for k, v in row.__dict__.items()
+                    if v is not None
+                }
+                for row in rows
+            ],
+        }
 
     # -- market data --------------------------------------------------------
     @staticmethod

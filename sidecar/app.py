@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import klines
+import research
 import scheduler
 import telegram
 from config import CURRENCY, PNL_LOOKBACK_DAYS, SIDECAR_HOST, SIDECAR_PORT, TRD_MARKET
@@ -264,6 +265,89 @@ def options_screen(
         min_open_interest=min_open_interest,
         limit=limit,
     )
+
+
+# -- research: securities the account does not hold -------------------------
+
+
+@app.get("/research/search")
+def research_search(
+    keyword: str = Query(..., min_length=1, description="Company or ticker, e.g. 'nvidia'"),
+    limit: int = Query(10, ge=1, le=50),
+) -> list[dict]:
+    return research.search(keyword, limit)
+
+
+@app.get("/research/watchlist")
+def research_watchlist(group: str = Query("All")) -> dict:
+    return research.watchlist(group)
+
+
+@app.get("/research/quote")
+def research_quote(
+    codes: str = Query(..., description="Comma-separated, e.g. US.NVDA,US.AMD"),
+) -> list[dict]:
+    wanted = [c.strip() for c in codes.split(",") if c.strip()]
+    if not wanted:
+        raise HTTPException(400, "at least one code is required")
+    return research.quote(wanted)
+
+
+@app.get("/research/profile")
+def research_profile(code: str = Query(..., description="e.g. US.NVDA")) -> dict:
+    return research.profile(code)
+
+
+@app.get("/research/volatility")
+def research_volatility(code: str = Query(..., description="e.g. US.NVDA")) -> dict:
+    return research.volatility(code)
+
+
+@app.get("/research/capital-flow")
+def research_capital_flow(
+    code: str = Query(..., description="e.g. US.NVDA"),
+    period: str = Query("INTRADAY", pattern="^(INTRADAY|DAY|WEEK|MONTH)$"),
+) -> dict:
+    return research.capital_flow(code, period)
+
+
+@app.get("/research/earnings-reaction")
+def research_earnings_reaction(code: str = Query(..., description="e.g. US.NVDA")):
+    return research.earnings_reaction(code)
+
+
+@app.get("/research/calendar")
+def research_calendar(
+    kind: str = Query(..., pattern="^(earnings|dividends|economic)$"),
+    market: str = Query("US", pattern="^(US|HK|SH|SZ|SG|JP|MY|AU|CA)$"),
+    days: int = Query(7, ge=1, le=60),
+) -> dict:
+    return research.calendar(kind, market, days)
+
+
+@app.post("/research/screen")
+def research_screen(body: dict) -> dict:
+    """Stock screener. POST because the filter list is structured, not flat.
+
+    Body: ``{"market": "US", "filters": [{"field": ..., "min": ..., "max": ...}],
+    "plate": null, "begin": 0, "num": 50}``.
+    """
+    try:
+        return research.screen_stocks(
+            market=body.get("market", "US"),
+            filters=body.get("filters"),
+            plate=body.get("plate"),
+            begin=int(body.get("begin", 0)),
+            num=int(body.get("num", 50)),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/research/screen/fields")
+def research_screen_fields() -> dict:
+    """The screener's field vocabulary, so filters can be built without guessing."""
+    return research.screen_fields()
 
 
 @app.get("/quota")

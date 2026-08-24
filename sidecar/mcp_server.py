@@ -22,12 +22,21 @@ mcp = MCPServer(
     name="moomoo",
     version="0.1.0",
     instructions=(
-        "Read-only access to Hayden's moomoo brokerage account: balances, "
-        "positions, net P&L and option-chain screening.\n\n"
+        "Read-only access to Hayden's moomoo brokerage account and to moomoo's "
+        "market data.\n\n"
+        "Account tools cover balances, positions, net P&L and deal history. "
+        "Research tools cover any listed security, held or not: search, "
+        "watchlist, quotes, candles, company profile, volatility, capital flow, "
+        "earnings reactions, calendars and a stock screener.\n\n"
         "This server reports facts. It cannot place, modify or cancel orders, "
-        "and it does not rank trades or judge whether any position or contract "
-        "is a good idea. Report the numbers and let the user draw conclusions; "
-        "do not offer buy/sell/hold recommendations from this data."
+        "and it does not rank trades or judge whether any position, contract or "
+        "screened stock is a good idea. Report the numbers and let the user draw "
+        "conclusions; do not offer buy/sell/hold recommendations from this data.\n\n"
+        "One exception carries someone else's opinion rather than a number: the "
+        "`third_party_views` branch of `profile` returns analyst consensus and "
+        "Morningstar's rating and fair value. Attribute those to the firm that "
+        "published them. Passing them on as your own view, or as this server's, "
+        "would turn a quoted rating into advice."
     ),
 )
 
@@ -35,6 +44,16 @@ mcp = MCPServer(
 async def _get(path: str, params: dict | None = None) -> dict | list:
     async with httpx.AsyncClient(timeout=TIMEOUT) as http:
         r = await http.get(f"{SIDECAR}/{path}", params=params or {})
+    return _handle(r)
+
+
+async def _post(path: str, body: dict) -> dict | list:
+    async with httpx.AsyncClient(timeout=TIMEOUT) as http:
+        r = await http.post(f"{SIDECAR}/{path}", json=body)
+    return _handle(r)
+
+
+def _handle(r: httpx.Response) -> dict | list:
     if r.status_code == 503:
         return {
             "error": "OpenD or the sidecar is not running",
@@ -131,6 +150,152 @@ async def screen_options(
             "min_open_interest": min_open_interest,
             "limit": limit,
         },
+    )
+
+
+@mcp.tool(
+    description=(
+        "Resolve a company name or partial ticker to moomoo codes. Every other "
+        "research tool needs a market-prefixed code (US.NVDA, HK.00700) — start "
+        "here when the user names a company rather than a code. `is_watched` "
+        "shows whether it is already on their moomoo watchlist."
+    )
+)
+async def search(keyword: str, limit: int = 10) -> list | dict:
+    return await _get("research/search", {"keyword": keyword, "limit": limit})
+
+
+@mcp.tool(
+    description=(
+        "The user's own moomoo watchlist — names they are tracking but may not "
+        "own. Use it when they say 'my watchlist', or to pick the universe for "
+        "a scan without asking them to list tickers. `groups` names the other "
+        "watchlist groups that can be requested."
+    )
+)
+async def watchlist(group: str = "All") -> dict:
+    return await _get("research/watchlist", {"group": group})
+
+
+@mcp.tool(
+    description=(
+        "Live snapshot for any codes, held or not: price, day range, volume, "
+        "turnover, market cap, P/E, 52-week range. Batch several codes in one "
+        "call rather than looping."
+    )
+)
+async def quote(codes: str) -> list | dict:
+    return await _get("research/quote", {"codes": codes})
+
+
+@mcp.tool(
+    description=(
+        "Daily/intraday OHLCV bars for any code. Use for trend, drawdown or "
+        "range questions. ktype is one of K_1M, K_5M, K_15M, K_30M, K_60M, "
+        "K_DAY, K_WEEK, K_MON."
+    )
+)
+async def candles(code: str, days: int = 365, ktype: str = "K_DAY") -> dict:
+    return await _get("candles", {"code": code, "days": days, "ktype": ktype})
+
+
+@mcp.tool(
+    description=(
+        "Full picture of one company: live quote, company profile, the sector "
+        "and index plates it belongs to, and — under `third_party_views` — the "
+        "analyst consensus and Morningstar star rating and fair value. Those "
+        "two are ratings published by OUTSIDE firms. Report them with their "
+        "attribution ('Morningstar puts fair value at X'); never restate them "
+        "as your own assessment or as this tool's conclusion."
+    )
+)
+async def profile(code: str) -> dict:
+    return await _get("research/profile", {"code": code})
+
+
+@mcp.tool(
+    description=(
+        "Implied and historical volatility for an underlying: IV, IV rank, IV "
+        "percentile, 30/60-day HV, and call/put volume and open interest. "
+        "Answers 'is this name's option pricing high or low right now' WITHOUT "
+        "needing option-chain entitlement — so it works on US names where "
+        "screen_options fails."
+    )
+)
+async def volatility(code: str) -> dict:
+    return await _get("research/volatility", {"code": code})
+
+
+@mcp.tool(
+    description=(
+        "Money flowing in and out of a stock, split by order size (super/big/"
+        "mid/small). `distribution_today` is the cumulative split so far; "
+        "`flow` is the series it came from. The split only means something "
+        "against its own trend — do not read a single reading as a signal."
+    )
+)
+async def capital_flow(code: str, period: str = "INTRADAY") -> dict:
+    return await _get("research/capital-flow", {"code": code, "period": period})
+
+
+@mcp.tool(
+    description=(
+        "How the stock actually traded around each past earnings release — "
+        "prices for the days before and after, plus the option IV going in. "
+        "Use for 'how much does this name usually move on earnings'."
+    )
+)
+async def earnings_reaction(code: str) -> list | dict:
+    return await _get("research/earnings-reaction", {"code": code})
+
+
+@mcp.tool(
+    description=(
+        "Upcoming events. kind='earnings' (with consensus EPS/revenue and "
+        "implied vol), 'dividends' (ex/record/payable dates, today only), or "
+        "'economic' (macro releases with previous/consensus/actual)."
+    )
+)
+async def calendar(kind: str, market: str = "US", days: int = 7) -> dict:
+    return await _get("research/calendar", {"kind": kind, "market": market, "days": days})
+
+
+@mcp.tool(
+    description=(
+        "The field vocabulary for stock_screener, grouped by filter kind, with "
+        "the extra argument each kind takes. Call this BEFORE stock_screener "
+        "unless you already know the exact field names — there are ~90 and they "
+        "are not guessable."
+    )
+)
+async def screener_fields() -> dict:
+    return await _get("research/screen/fields")
+
+
+@mcp.tool(
+    description=(
+        "Screen a whole market for stocks the user does not own, on "
+        "fundamentals (P/E, ROE, margins, growth), price action (change, "
+        "turnover, distance from 52-week high) or chart patterns (MACD/RSI/KDJ "
+        "crosses, MA alignment, Bollinger breaks). `filters` is a list of "
+        "{field, min, max} — get valid field names from screener_fields first. "
+        "Percent fields take whole numbers (20 means 20%). A filter with no min "
+        "or max returns that column without constraining it.\n\n"
+        "Like screen_options, this DESCRIBES: it returns the values each name "
+        "matched on, in the order requested. It does not score, rank by quality "
+        "or suggest what to buy — report the numbers and let the user judge."
+    )
+)
+async def stock_screener(
+    market: str = "US",
+    filters: list | None = None,
+    plate: str | None = None,
+    begin: int = 0,
+    num: int = 50,
+) -> dict:
+    return await _post(
+        "research/screen",
+        {"market": market, "filters": filters, "plate": plate, "begin": begin, "num": num},
     )
 
 

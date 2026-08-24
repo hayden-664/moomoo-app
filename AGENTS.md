@@ -88,6 +88,35 @@ zero results instead:
 - **`OptionDataFilter.delta_min/max` take RAW delta (0.15), not percent.**
   Passing `15` matches nothing and returns an empty chain with no error. This
   one is invisible: it looks like "no contracts qualified".
+- **`get_earnings_calendar` caps begin/end at 7 days.** `research.calendar()`
+  walks longer windows in 7-day slices.
+- **Research payload shapes are not uniform.** Most quote calls return
+  `(ret, DataFrame)`, but the ranked/paged ones return `(ret, (count, frame))`
+  and `get_economic_calendar` returns a 4-tuple with a paging cursor.
+  `_unwrap_any` reads only the first two slots for that reason; `_unwrap`
+  raises on unpack against either.
+- **`get_stock_filter` results are objects, not rows.** Values live in
+  `FilterStockData.__dict__`, keyed by plain strings for simple fields but by
+  *tuples* for accumulate/financial ones — `(field, days)`, `(field, quarter)`.
+  Those keys are not JSON-serialisable, so `MoomooClient.stock_filter`
+  flattens them. Screener percent fields also take whole numbers: `20` is 20%.
+
+# Volatility survives the option entitlement gap
+
+`us_option_qot_right` is `NO`, so chains fail — but
+`get_option_underlying_overview` still returns IV, IV rank, IV percentile and
+30/60-day HV for US underlyings. `research.volatility()` uses it, and it is
+the only way to answer "is this name's option pricing rich" on this account.
+Do not assume an option-shaped question needs the chain.
+
+# Third-party ratings are quoted, never adopted
+
+`research.profile()` returns analyst consensus and Morningstar's star rating
+and fair value under `third_party_views`. Unlike everything else in this
+codebase those are directional opinions published by outside firms. They are
+carried with a `source` note so they can be reported as "Morningstar says X".
+Never surface them as the app's own view, and never let them leak into a
+surface that otherwise only reports derived numbers.
 
 # Quote entitlements gate the screener
 
