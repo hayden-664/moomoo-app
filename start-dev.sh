@@ -38,4 +38,12 @@ else
   fi
 fi
 
+# Fire the daily review if today's has not gone out yet. Backgrounded so it
+# never delays the dev server: it waits for the sidecar that the line below is
+# about to start, then sends. The --if-due guard means starting the dev server
+# repeatedly still only produces one review per day.
+if [ -x ./run-daily-review.sh ]; then
+    ( ./run-daily-review.sh --if-due >> /tmp/moomoo-daily-review.log 2>&1 & ) &
+fi
+
 exec npx concurrently -n web,sidecar -c cyan,magenta "next dev" "./run-sidecar.sh"

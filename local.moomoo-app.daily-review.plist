@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Optional: run the /daily-review skill each weekday morning and deliver the
+  result to Telegram.
+
+  This fires at 08:45, fifteen minutes after the sidecar's own 08:30 P&L
+  summary, so the numbers land first and the written review follows. It does
+  NOT duplicate that alert — the sidecar sends figures, this sends analysis.
+
+  Like everything else here, nothing fires while the Mac is off or asleep.
+  Unlike cron, launchd runs a missed StartCalendarInterval job once on wake,
+  so a closed lid means a late review rather than no review.
+
+  Before installing, replace /private/var/my_projects/moomoo-app below with the absolute path
+  to where you cloned this repo.
+
+  Install:
+    chmod +x run-daily-review.sh
+    cp local.moomoo-app.daily-review.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/local.moomoo-app.daily-review.plist
+
+  Test without waiting for the schedule:
+    launchctl start local.moomoo-app.daily-review
+
+  Remove:
+    launchctl unload ~/Library/LaunchAgents/local.moomoo-app.daily-review.plist
+    rm ~/Library/LaunchAgents/local.moomoo-app.daily-review.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.moomoo-app.daily-review</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/private/var/my_projects/moomoo-app/run-daily-review.sh</string>
+    </array>
+
+    <!-- Must be the repo root: .mcp.json is project-scoped, and the moomoo
+         tools do not load from anywhere else. -->
+    <key>WorkingDirectory</key>
+    <string>/private/var/my_projects/moomoo-app</string>
+
+    <!-- Weekdays at 08:45 local. Weekday 1=Mon … 5=Fri. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>45</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>45</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>45</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>45</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>45</integer>
+        </dict>
+    </array>
+
+    <!-- A scheduled job is not a daemon; it must not be restarted on exit. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/moomoo-daily-review.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/moomoo-daily-review.err.log</string>
+</dict>
+</plist>

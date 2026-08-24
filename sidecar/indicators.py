@@ -62,9 +62,32 @@ def _rma(series: pd.Series, length: int) -> pd.Series:
 
 
 def _clean(value: Any) -> Any:
-    """NaN/inf are not valid JSON; None round-trips to null."""
+    """Coerce a numpy/pandas scalar to a plain JSON-safe Python number.
+
+    The unwrap step is not optional. ``np.float64`` subclasses Python ``float``,
+    so it satisfies an ``isinstance`` check and looks handled — but ``np.int64``
+    subclasses nothing, so it sails through untouched and only fails much later,
+    in the response serializer, as "Unable to serialize unknown type". The bar
+    cache stores volume as SQLite INTEGER, so pandas types that column int64 and
+    every volume-derived field hits exactly this path.
+
+    ``.item()`` unwraps any numpy scalar regardless of its subclassing, which is
+    why it is used in preference to a type check.
+
+    NaN/inf are not valid JSON either; None round-trips to null.
+    """
+    if hasattr(value, "item") and not isinstance(value, (str, bytes)):
+        try:
+            value = value.item()
+        except (AttributeError, ValueError):
+            pass
+    if value is None or value is pd.NaT:
+        return None
+    # bool is an int subclass; leave it as a bool rather than rounding it to 1.
+    if isinstance(value, bool):
+        return value
     if isinstance(value, (int, float)):
-        if value is None or math.isnan(value) or math.isinf(value):
+        if math.isnan(value) or math.isinf(value):
             return None
         return round(float(value), 4)
     return value

@@ -405,6 +405,23 @@ async def notify_pnl(days: int = Query(365, ge=1, le=1825)) -> dict:
     return await telegram.notify(telegram.format_pnl(summary, acct))
 
 
+@app.post("/notify")
+async def notify(body: dict) -> dict:
+    """Push arbitrary text to Telegram.
+
+    Exists so a scheduled agent can deliver a written report to the same place
+    the P&L alerts already land. Sent as plain text and split at the 4096-char
+    cap — see ``telegram.notify_text`` for why HTML parsing is not used here.
+
+    The bot token never leaves the sidecar's environment: callers post text,
+    not credentials.
+    """
+    text = (body or {}).get("text") or ""
+    if not text.strip():
+        raise HTTPException(400, "body must include a non-empty 'text'")
+    return await telegram.notify_text(text, silent=bool((body or {}).get("silent")))
+
+
 @app.post("/notify/test")
 async def notify_test() -> dict:
     return await telegram.notify("✅ moomoo-app is wired up to Telegram.")
