@@ -299,5 +299,24 @@ async def stock_screener(
     )
 
 
+@mcp.tool(
+    description=(
+        "Technical indicators for one symbol, computed locally from moomoo's "
+        "own adjusted bars: moving averages and distance from each, RSI, MACD "
+        "(with recent cross), stochastic, ADX/DI, ATR, Bollinger bands with "
+        "%B, realized volatility, OBV and volume vs average, 52-week range, "
+        "and trailing returns.\n\n"
+        "Costs no broker call when the bar cache is warm, so it is cheap to "
+        "run across many names. Pair with `volatility` to compare realized "
+        "against implied.\n\n"
+        "These are measurements, not signals. Report the values and the "
+        "mechanical state (`rsi_zone` is `above_70`, not 'overbought'); do not "
+        "translate them into a view on the stock."
+    )
+)
+async def technicals(code: str, days: int = 400, ktype: str = "K_DAY") -> dict:
+    return await _get("technicals", {"code": code, "days": days, "ktype": ktype})
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

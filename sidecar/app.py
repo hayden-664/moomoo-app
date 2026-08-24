@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import indicators
 import klines
 import research
 import scheduler
@@ -376,6 +377,21 @@ def markers(
 ) -> list[dict]:
     """Your fills for one symbol, ready to plot against the bars."""
     return klines.markers(code=code, days=days)
+
+
+@app.get("/technicals")
+def technicals(
+    code: str = Query(..., description="e.g. US.TSLA"),
+    days: int = Query(indicators.DEFAULT_DAYS, ge=30, le=1825),
+    ktype: str = Query("K_DAY", pattern="^K_(1M|5M|15M|30M|60M|DAY|WEEK|MON)$"),
+) -> dict:
+    """Indicators derived from the cached bars.
+
+    Served off the same series ``/candles`` returns, so an indicator can never
+    disagree with the candle it is drawn on. ``days`` defaults wide enough for
+    SMA200 to be populated rather than null.
+    """
+    return indicators.technicals(code=code, days=days, ktype=ktype)
 
 
 @app.post("/notify/pnl")
