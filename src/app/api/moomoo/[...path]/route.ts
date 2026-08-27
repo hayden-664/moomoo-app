@@ -23,7 +23,7 @@ const GET_ROUTES = new Set([
   "markers",
 ])
 
-const POST_ROUTES = new Set(["notify/pnl", "notify/test"])
+const POST_ROUTES = new Set(["notify/pnl", "notify/test", "notify/review"])
 
 async function proxy(
   req: NextRequest,

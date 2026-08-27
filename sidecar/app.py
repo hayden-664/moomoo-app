@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import pathlib
 
 import asyncio
 from contextlib import asynccontextmanager, suppress
@@ -23,7 +24,7 @@ import scheduler
 import telegram
 from config import CURRENCY, PNL_LOOKBACK_DAYS, SIDECAR_HOST, SIDECAR_PORT, TRD_MARKET
 from currency import account_breakdown, currencies_in
-from moomoo_client import MoomooError, OpendUnreachable, client, opend_reachable
+from moomoo_client import MoomooError, OpendUnreachable, client, opend_reachable, require_opend
 from pnl import net_pnl
 from screener import screen
 
@@ -425,6 +426,51 @@ async def notify(body: dict) -> dict:
 @app.post("/notify/test")
 async def notify_test() -> dict:
     return await telegram.notify("✅ moomoo-app is wired up to Telegram.")
+
+
+# Same script the launchd job runs, so a manual trigger and the scheduled one
+# can never drift apart in behaviour.
+_REVIEW_SCRIPT = pathlib.Path(__file__).resolve().parent.parent / "run-daily-review.sh"
+_review_running = False
+
+
+@app.post("/notify/review")
+async def notify_review() -> dict:
+    """Run the /daily-review skill and deliver it to Telegram, in the background.
+
+    The skill takes ~2 minutes end to end, so this launches the same
+    ``run-daily-review.sh`` the launchd job uses and returns immediately
+    rather than holding the request open. ``require_opend`` is checked here
+    first purely so a click gets an instant, clear error instead of a
+    "started" response followed by silence.
+    """
+    require_opend()
+    global _review_running
+    if _review_running:
+        raise HTTPException(409, "a daily review is already running")
+    if not _REVIEW_SCRIPT.exists():
+        raise HTTPException(500, f"missing {_REVIEW_SCRIPT}")
+
+    _review_running = True
+
+    async def _run() -> None:
+        global _review_running
+        try:
+            with open("/tmp/moomoo-daily-review.log", "a") as out:
+                proc = await asyncio.create_subprocess_exec(
+                    str(_REVIEW_SCRIPT),
+                    cwd=str(_REVIEW_SCRIPT.parent),
+                    stdout=out,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+                await proc.wait()
+        except Exception:  # noqa: BLE001 - background task must not go unlogged
+            log.exception("manual daily review run failed")
+        finally:
+            _review_running = False
+
+    asyncio.create_task(_run())
+    return {"started": True}
 
 
 if __name__ == "__main__":

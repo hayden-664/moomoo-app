@@ -37,6 +37,13 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [updated, setUpdated] = useState<Date | null>(null)
   const [notifying, setNotifying] = useState(false)
+  const [sendingReview, setSendingReview] = useState(false)
+  // True from a successful "started" response until the skill has had time to
+  // finish, so the button can't be clicked again mid-run and hit the
+  // sidecar's "already running" guard.
+  const [reviewInFlight, setReviewInFlight] = useState(false)
+  const [reviewStatus, setReviewStatus] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   // Widest by default: the sidecar pulls the full lookback regardless, so a
   // narrower range hides history rather than saving a call.
@@ -92,11 +99,41 @@ export default function Dashboard() {
 
   const sendToTelegram = async () => {
     setNotifying(true)
+    setActionError(null)
     try {
       const r = await api.notify("pnl")
-      if (!r.sent) setError(`Telegram: ${r.reason ?? "send failed"}`)
+      if (!r.sent) setActionError(`Daily summary: ${r.reason ?? "send failed"}`)
     } finally {
       setNotifying(false)
+    }
+  }
+
+  // The skill run behind this takes ~2 minutes, so the button stays disabled
+  // for that long after a successful start — otherwise a second click lands
+  // on the sidecar's "already running" guard, which reads as a failure even
+  // though the first run is progressing normally.
+  const REVIEW_RUN_MS = 150_000
+
+  const sendDailyReview = async () => {
+    setSendingReview(true)
+    setReviewStatus(null)
+    setActionError(null)
+    try {
+      const r = await api.notify("review")
+      if (r.started) {
+        setReviewInFlight(true)
+        setReviewStatus("Started — check Telegram in a couple of minutes")
+        setTimeout(() => {
+          setReviewStatus(null)
+          setReviewInFlight(false)
+        }, REVIEW_RUN_MS)
+      } else if (r.detail?.includes("already running")) {
+        setActionError("Daily review: still sending the last one — try again in a minute or two")
+      } else {
+        setActionError(`Daily review: ${r.detail ?? r.reason ?? "failed to start"}`)
+      }
+    } finally {
+      setSendingReview(false)
     }
   }
 
@@ -143,13 +180,31 @@ export default function Dashboard() {
             disabled={notifying || !pnl || !health?.telegram}
             title={
               health?.telegram
-                ? "Send the current P&L summary to Telegram"
+                ? "Send the current net P&L numbers to Telegram"
                 : "Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable"
             }
             className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm hover:border-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {notifying ? "Sending…" : "Send to Telegram"}
+            {notifying ? "Sending…" : "Send Daily Summary"}
           </button>
+          <button
+            onClick={sendDailyReview}
+            disabled={
+              sendingReview ||
+              reviewInFlight ||
+              health?.opend !== "connected" ||
+              !health?.telegram
+            }
+            title={
+              health?.telegram
+                ? "Run the /daily-review skill and send it to Telegram (~2 min)"
+                : "Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable"
+            }
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm hover:border-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {sendingReview ? "Starting…" : reviewInFlight ? "Sending…" : "Send Daily Review"}
+          </button>
+          {reviewStatus && <span className="text-xs text-muted">{reviewStatus}</span>}
         </div>
       </header>
 
@@ -157,6 +212,12 @@ export default function Dashboard() {
         <div className="rounded-lg border border-neg/40 bg-neg/10 px-4 py-3 text-sm">
           <div className="font-medium text-neg">Not connected</div>
           <div className="mt-1 text-muted">{error}</div>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="rounded-lg border border-neg/40 bg-neg/10 px-4 py-3 text-sm">
+          <div className="text-muted">{actionError}</div>
         </div>
       )}
 

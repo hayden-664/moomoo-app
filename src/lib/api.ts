@@ -41,7 +41,7 @@ export const api = {
   markers: (code: string, days = 365) => get<Fill[]>("markers", { code, days }),
   screen: (params: Record<string, string | number>) =>
     get<ScreenResult>("options/screen", params),
-  notify: async (which: "pnl" | "test") => {
+  notify: async (which: "pnl" | "test" | "review") => {
     const res = await fetch(`/api/moomoo/notify/${which}`, { method: "POST" })
     return res.json()
   },
