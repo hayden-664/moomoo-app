@@ -5,9 +5,23 @@
 #   ./run-daily-review.sh
 #
 # Why it posts to the sidecar instead of calling Telegram directly: the bot
-# token stays in exactly one place. This script never sees a credential.
+# token stays in exactly one place — this script only reads it from .env to
+# check it's present, never to send anything itself.
 set -uo pipefail
 cd "$(dirname "$0")"
+
+log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+
+# Same .env this repo's other scripts source (run-sidecar.sh). Read directly
+# here rather than asking the sidecar, since the whole point is to bail out
+# before waking OpenD or spending a claude -p run on a report with nowhere
+# to go.
+[ -f .env ] && set -a && . ./.env && set +a
+
+if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+    log "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set; nothing to deliver to, skipping"
+    exit 0
+fi
 
 SIDECAR="${SIDECAR_URL:-http://127.0.0.1:8788}"
 # launchd starts with a minimal PATH, so the CLI is addressed absolutely.
@@ -33,8 +47,6 @@ PROMPT="${PROMPT:-/daily-review}"
 STATE_DIR="sidecar/.cache"
 STATE_FILE="$STATE_DIR/daily-review-last"
 TODAY=$(date +%F)
-
-log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 
 deliver() {
     # --arg does the JSON escaping; a report full of quotes and newlines would

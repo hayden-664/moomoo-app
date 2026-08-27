@@ -77,8 +77,9 @@ def _md_to_html(text: str) -> str:
     which is what made the first delivered report hard to read.
 
     Order matters: code spans are stashed before escaping so their contents are
-    not re-interpreted, and ``**`` is consumed before single ``*`` so bold does
-    not get parsed as two italics.
+    not re-interpreted, ``**``/``__`` are consumed before single ``*``/``_`` so
+    bold does not get parsed as two italics, and the horizontal-rule check runs
+    before either so a bare ``_____`` is dropped rather than read as bold.
     """
     stash: list[str] = []
 
@@ -102,11 +103,15 @@ def _md_to_html(text: str) -> str:
 
     # Headings carry no size in Telegram, so they become bold lines.
     text = re.sub(r"(?m)^\s{0,3}#{1,6}\s+(.+?)\s*$", r"<b>\1</b>", text)
-    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text, flags=re.S)
-    text = re.sub(r"(?<![\w*])\*([^*\n]+?)\*(?![\w*])", r"<i>\1</i>", text)
-    text = re.sub(r"(?m)^\s{0,3}[-*+]\s+", "• ", text)
-    # A markdown rule renders as three stray dashes; drop the line entirely.
+    # A markdown rule renders as three-plus stray dashes/asterisks/underscores;
+    # drop the line entirely. Must run before the emphasis regexes below, or a
+    # bare run of underscores reads as an (empty-ish) bold span instead.
     text = re.sub(r"(?m)^\s{0,3}([-*_])(?:\s*\1){2,}\s*$", "", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text, flags=re.S)
+    text = re.sub(r"__(.+?)__", r"<b>\1</b>", text, flags=re.S)
+    text = re.sub(r"(?<![\w*])\*([^*\n]+?)\*(?![\w*])", r"<i>\1</i>", text)
+    text = re.sub(r"(?<![\w_])_([^_\n]+?)_(?![\w_])", r"<i>\1</i>", text)
+    text = re.sub(r"(?m)^\s{0,3}[-*+]\s+", "• ", text)
 
     for i, content in enumerate(stash):
         text = text.replace(f"\x00{i}\x00", content)
@@ -118,10 +123,12 @@ def _strip_md(text: str) -> str:
     text = re.sub(r"```[a-zA-Z0-9_-]*\n(.*?)```", r"\1", text, flags=re.S)
     text = re.sub(r"`([^`\n]+)`", r"\1", text)
     text = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", text)
+    text = re.sub(r"(?m)^\s{0,3}([-*_])(?:\s*\1){2,}\s*$", "", text)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text, flags=re.S)
+    text = re.sub(r"__(.+?)__", r"\1", text, flags=re.S)
     text = re.sub(r"(?<![\w*])\*([^*\n]+?)\*(?![\w*])", r"\1", text)
-    text = re.sub(r"(?m)^\s{0,3}[-*+]\s+", "• ", text)
-    return re.sub(r"(?m)^\s{0,3}([-*_])(?:\s*\1){2,}\s*$", "", text)
+    text = re.sub(r"(?<![\w_])_([^_\n]+?)_(?![\w_])", r"\1", text)
+    return re.sub(r"(?m)^\s{0,3}[-*+]\s+", "• ", text)
 
 
 async def notify_text(text: str, *, silent: bool = False) -> dict:
