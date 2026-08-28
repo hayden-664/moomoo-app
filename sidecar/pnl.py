@@ -20,11 +20,17 @@ stock splits or other corporate actions, and are only as complete as the date
 window of deal history they were given. The API surfaces them under separate
 keys with ``approximate: true`` so the UI never presents them as broker truth.
 
-On this securities account the broker reports ``realized_pl`` as 0 on every
-position row, so (2) is always zero and (4) is the only source for partial-sell
-gains. An earlier version dropped (4) entirely, on the assumption that open
-position P&L already covered it; it does not, and those gains went missing from
-the net.
+On this securities account the broker usually reports ``realized_pl`` as 0 on
+a position row -- until that position has actually been partially sold, at
+which point moomoo starts populating it for that symbol only. (2) and (4)
+therefore have to be reconciled *per symbol*, not once for the whole currency:
+preferring the broker figure whenever it is non-zero for that symbol, and
+falling back to the reconstruction otherwise. A per-currency switch was tried
+first and was wrong -- the moment any single position got a broker-reported
+figure, every other position's derived banked gain silently dropped out of the
+net until the broker reported on it too. An earlier version before that
+dropped (4) entirely, on the assumption that open position P&L already
+covered it; it does not, and those gains went missing from the net.
 
 This account trades both US (USD) and Bursa (MYR). Figures are bucketed by
 settlement currency first, then converted into the reporting currency and
@@ -81,6 +87,7 @@ def _empty_open(ccy: str) -> dict:
         "currency": ccy,
         "open_unrealized": 0.0,
         "open_realized": 0.0,
+        "open_realized_by_symbol": {},
         "today": 0.0,
         "market_value": 0.0,
         "cost_basis": 0.0,
@@ -94,8 +101,13 @@ def summarise_positions(positions: Iterable[dict], base: str = "USD") -> dict[st
     for p in positions:
         ccy = currency_of(p, base)
         block = out.setdefault(ccy, _empty_open(ccy))
+        code = p.get("code") or ""
+        realized = _f(p, "realized_pl")
         block["open_unrealized"] += _f(p, "unrealized_pl", "pl_val")
-        block["open_realized"] += _f(p, "realized_pl")
+        block["open_realized"] += realized
+        block["open_realized_by_symbol"][code] = (
+            block["open_realized_by_symbol"].get(code, 0.0) + realized
+        )
         block["today"] += _f(p, "today_pl_val")
         block["market_value"] += _f(p, "market_val")
         qty = _f(p, "qty", "can_sell_qty")
@@ -108,6 +120,8 @@ def summarise_positions(positions: Iterable[dict], base: str = "USD") -> dict[st
     for block in out.values():
         for key in ("open_unrealized", "open_realized", "today", "market_value", "cost_basis"):
             block[key] = round(block[key], 2)
+        for code, v in block["open_realized_by_symbol"].items():
+            block["open_realized_by_symbol"][code] = round(v, 2)
     return out
 
 
@@ -232,14 +246,37 @@ def _combine(ccy: str, open_side: dict, closed_side: dict, partial_side: dict) -
     """Assemble one currency's net from its own open/closed/partial parts."""
     # open_realized and partial_realized measure the same thing from different
     # sources, so adding both would double-count. Prefer the broker when it
-    # reports anything; fall back to the reconstruction when it reports zero,
-    # which is what this account does.
-    use_derived = open_side["open_realized"] == 0
-    partial_side["counted_in_net"] = use_derived
-
-    banked = (
-        partial_side["partial_realized"] if use_derived else open_side["open_realized"]
-    )
+    # reports anything for a *symbol*; fall back to the reconstruction for that
+    # symbol when it reports zero, which is what this account does before a
+    # position has ever been partially sold.
+    #
+    # This has to be decided per symbol, not once for the whole currency: the
+    # broker populates `realized_pl` on a position one sale at a time. A
+    # blanket switch means the instant any single position gets a
+    # broker-reported figure, every *other* position's derived banked gain
+    # drops out of the total until the broker gets around to reporting on it
+    # too -- money that was never lost, just temporarily unaccounted for. This
+    # is not hypothetical: a single TMDX sale once zeroed MU's and META's
+    # banked gains out of net for a day.
+    broker_by_symbol = open_side.get("open_realized_by_symbol", {})
+    derived_by_symbol = partial_side["by_symbol"]
+    banked_by_symbol: dict[str, float] = {}
+    broker_symbols: list[str] = []
+    for code in sorted(set(broker_by_symbol) | set(derived_by_symbol)):
+        broker_v = broker_by_symbol.get(code, 0.0)
+        if broker_v:
+            banked_by_symbol[code] = round(broker_v, 2)
+            broker_symbols.append(code)
+        else:
+            derived_v = derived_by_symbol.get(code, 0.0)
+            if derived_v:
+                banked_by_symbol[code] = derived_v
+    # Per-symbol provenance for whatever got banked into net -- which symbols'
+    # contribution came from the broker's own figure rather than the
+    # reconstruction. `partial.partial_realized`/`by_symbol` stay the pure,
+    # unmixed derived reconstruction; this is what actually went into `net`.
+    partial_side["broker_symbols"] = broker_symbols
+    banked = round(sum(banked_by_symbol.values()), 2)
     # Everything actually cashed out: finished round-trips plus what was taken
     # off the table from positions still held. Computed here rather than in each
     # consumer so the dashboard, Telegram and MCP cannot disagree about it.
@@ -284,7 +321,7 @@ def _convert(
     unconverted: list[str] = []
     converted_from: list[str] = []
     net = realized = 0.0
-    counted_in_net = False
+    broker_symbols: list[str] = []
 
     for ccy, b in by_currency.items():
         rate = usable.get(ccy)
@@ -299,10 +336,9 @@ def _convert(
         open_t["position_count"] += o["position_count"]
         closed_t["closed_realized"] += b["closed"]["closed_realized"] * rate
         partial_t["partial_realized"] += b["partial"]["partial_realized"] * rate
-        # counted_in_net is decided per currency; the merged flag is true when
-        # any currency fell back to the reconstruction, which is what the
-        # provenance note in the UI is describing.
-        counted_in_net = counted_in_net or b["partial"]["counted_in_net"]
+        # Decided per symbol within each currency's own _combine call; just
+        # collect which symbols (across every currency) had a broker figure.
+        broker_symbols.extend(b["partial"]["broker_symbols"])
         realized += b["total_realized"] * rate
         net += b["net"] * rate
         for code, v in b["closed"]["by_symbol"].items():
@@ -314,7 +350,7 @@ def _convert(
         open_t[key] = round(open_t[key], 2)
     closed_t["closed_realized"] = round(closed_t["closed_realized"], 2)
     partial_t["partial_realized"] = round(partial_t["partial_realized"], 2)
-    partial_t["counted_in_net"] = counted_in_net
+    partial_t["broker_symbols"] = sorted(broker_symbols)
 
     def sort_desc(d: dict[str, float]) -> dict[str, float]:
         return dict(sorted(d.items(), key=lambda kv: kv[1], reverse=True))

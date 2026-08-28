@@ -31,6 +31,8 @@ export type OpenPnl = {
   currency: string
   open_unrealized: number
   open_realized: number
+  /** Same figure, broken out per symbol — what `partial.broker_symbols` is decided from. */
+  open_realized_by_symbol: Record<string, number>
   today: number
   market_value: number
   cost_basis: number
@@ -49,12 +51,18 @@ export type ClosedPnl = {
 /** Banked by selling part of a holding you still own. Derived, like ClosedPnl. */
 export type PartialPnl = {
   currency: string
+  /** Pure FIFO reconstruction — not what necessarily went into `net`. */
   partial_realized: number
   by_symbol: Record<string, number>
   approximate: true
   excludes: string[]
-  /** False when the broker reports its own figure and this one would double-count. */
-  counted_in_net: boolean
+  /**
+   * Symbols where the broker's own `realized_pl` (not this reconstruction)
+   * was used for that symbol's contribution to `net` — decided per symbol,
+   * since the broker only starts reporting a figure once that specific
+   * position has been partially sold.
+   */
+  broker_symbols: string[]
 }
 
 /** Every P&L figure for one settlement currency. Never mixed with another. */
