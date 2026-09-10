@@ -227,3 +227,141 @@ export type Quota = {
     option_remain: number | null
   } | null
 }
+
+// -- paper engine --------------------------------------------------------------
+// Simulated account only. Everything here describes orders against moomoo's
+// paper account; nothing in this branch of the app can reach the real one.
+
+/** One leaf of a rule condition, as it was actually evaluated. */
+export type PaperTraceLeaf = {
+  path: string
+  /** Null where the technicals payload had no value — a real state on short history. */
+  resolved: string | number | boolean | string[] | null
+  op: string
+  target: string | number | boolean | number[] | string[] | null
+  result: boolean
+}
+
+export type PaperDecision = {
+  decision_id: string
+  cycle_id: string
+  ts: string
+  /** US/Eastern session date. Order caps are counted against this, not the local date. */
+  trade_date: string | null
+  code: string
+  rule_id: string
+  rules_sha: string | null
+  kind: "ENTRY" | "EXIT"
+  outcome: "MATCHED" | "NO_MATCH" | "BLOCKED" | "PLACED" | "PLACE_FAILED" | "CLAIM"
+  block_reason: string | null
+  block_detail: string | null
+  trace: PaperTraceLeaf[] | null
+  bar_as_of: string | null
+  side: "BUY" | "SELL" | null
+  qty: number | null
+  limit_price: number | null
+  ref_price: number | null
+  atr14: number | null
+  stop_price: number | null
+  risk_usd: number | null
+  /** Size the rule asked for, before the paper account's buying power was checked. */
+  qty_intended: number | null
+  qty_affordable: number | null
+  /** 1 when the order was cut to fit paper buying power rather than rejected. */
+  scaled: number | null
+  client_tag: string | null
+}
+
+export type PaperOrder = {
+  order_id: string
+  client_tag: string
+  trd_env: string
+  acc_id: string
+  trade_date: string | null
+  code: string | null
+  trd_side: "BUY" | "SELL" | null
+  order_type: string | null
+  qty: number | null
+  price: number | null
+  currency: string | null
+  status: string | null
+  dealt_qty: number | null
+  dealt_avg_price: number | null
+  /** The broker's own words on a rejection. The most useful field when one fails. */
+  last_err_msg: string | null
+  remark: string | null
+  created_at: string | null
+  updated_at: string | null
+  terminal_at: string | null
+}
+
+export type PaperExclusion = {
+  code: string
+  reason:
+    | "market_not_tradable"
+    | "instrument_excluded"
+    | "insufficient_history"
+    | "stale_bars"
+  detail: string
+}
+
+export type PaperUniverse = {
+  considered: string[]
+  sources: { positions: string[]; watchlist: string[] }
+  /** Named, never silently dropped — as with unconvertible currencies in P&L. */
+  excluded: PaperExclusion[]
+}
+
+export type PaperStatus = {
+  engine: {
+    enabled: boolean
+    acc_id: number
+    trd_env: string
+    killed: boolean
+    kill_reason?: string | null
+    cycle_minutes: number
+    /** US/Eastern "HH:MM" when entries are evaluated; null = every cycle. */
+    evaluate_at: string | null
+    /** off | alerts | all — how much reaches Telegram. */
+    notify: string
+    entry_window?: { open: boolean | null; reason: string }
+    rules_sha?: string
+    rules_error?: string
+    last_cycle?: string | null
+    /** Set when a session ended without the entry window being reached. */
+    missed_entry_window?: string | null
+    error?: string
+  }
+  orders_today: number
+  /** BUY orders only: the daily cap is a budget on new exposure. */
+  entries_today: number
+  open_orders: PaperOrder[]
+  rules?: {
+    sha256: string
+    ktype: string
+    source_path: string
+    rule_ids: string[]
+    enabled_rule_ids: string[]
+    portfolio: Record<string, number | string>
+  }
+  rules_error?: string
+  caps?: {
+    max_orders_per_day: number
+    max_concurrent_positions: number
+    /** Share of the REAL account's equity, the basis that sized the positions. */
+    max_open_notional_pct: number
+    max_notional_usd: number
+    max_risk_pct: number
+  }
+  last_cycle?: {
+    cycle_id: string
+    started_at: string
+    finished_at: string | null
+    market_state: string | null
+    equity_real: number | null
+    paper_total_assets: number | null
+    blocked_by: string | null
+    error: string | null
+    universe: PaperUniverse | null
+  }
+}

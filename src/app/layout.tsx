@@ -30,8 +30,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/options" className="text-muted hover:text-foreground">
               Options
             </Link>
+            <Link href="/paper" className="text-muted hover:text-foreground">
+              Paper
+            </Link>
+            {/* The badge used to say the whole app was read-only. It still is,
+                against the real account - which is the part worth stating now
+                that a simulated account can be traded. */}
             <span className="ml-auto rounded border border-border px-2 py-0.5 text-xs text-muted">
-              read-only
+              real account: read-only
             </span>
           </div>
         </nav>

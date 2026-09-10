@@ -43,19 +43,38 @@ function formatter(currency: string): Intl.NumberFormat | null {
   }
 }
 
+/**
+ * Coerce a broker figure to a number, or null.
+ *
+ * moomoo writes the *string* `"N/A"` where a field has no value, so a plain
+ * null check passes it straight through: `??` does not fall through a string,
+ * and `Number.isNaN("N/A")` is false, so Intl formatted it and the cell read
+ * `$NaN`. The Python side has `currency.num()` for exactly this; this is its
+ * counterpart. `types.ts` is a hand-written mirror of the sidecar's JSON and
+ * nothing checks it, so guarding at the formatter is what makes every surface
+ * safe rather than the one that happened to be noticed.
+ */
+export function num(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  const n = typeof value === "number" ? value : Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
 export function fmt(value: number | null | undefined, currency = "USD") {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—"
+  const n = num(value)
+  if (n === null) return "—"
   const f = formatter(currency)
-  if (f) return f.format(value)
-  return `${currency} ${value.toLocaleString("en-US", {
+  if (f) return f.format(n)
+  return `${currency} ${n.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
 }
 
 export function pct(value: number | null | undefined, digits = 2) {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—"
-  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`
+  const n = num(value)
+  if (n === null) return "—"
+  return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}%`
 }
 
 /**
