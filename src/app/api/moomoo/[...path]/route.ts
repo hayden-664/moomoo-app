@@ -5,9 +5,20 @@ const SIDECAR = process.env.SIDECAR_URL ?? "http://127.0.0.1:8788"
 /**
  * Allowlisted passthrough to the Python sidecar.
  *
- * The sidecar has no order-placing endpoint, but the allowlist is kept
- * explicit anyway so a future sidecar route can never become reachable from
- * the browser just by existing.
+ * A future sidecar route can never become reachable from the browser just by
+ * existing; it has to be named here.
+ *
+ * The paper engine makes that rule load-bearing rather than precautionary, so
+ * it is applied asymmetrically: the browser can stop the engine, resume a stop
+ * it can see the reason for, and read everything the engine has done - but it
+ * cannot make it trade. `paper/kill` and `paper/resume` are allowlisted;
+ * `paper/run-once` and `paper/dry-run` deliberately are not, because those are
+ * the two that place or evaluate orders on demand.
+ *
+ * Resume is safe to expose because the sidecar makes it deliberate rather than
+ * one-click: the caller has to echo the current kill reason back, and a halt
+ * caused by the simulation guarantee failing cannot be cleared through the API
+ * at all. Keep both of those if you touch it.
  */
 const GET_ROUTES = new Set([
   "health",
@@ -21,9 +32,26 @@ const GET_ROUTES = new Set([
   "quota",
   "candles",
   "markers",
+  // Paper engine, all read-only.
+  "paper/status",
+  "paper/positions",
+  "paper/orders",
+  "paper/journal",
+  "paper/rules",
 ])
 
-const POST_ROUTES = new Set(["notify/pnl", "notify/test", "notify/review"])
+const POST_ROUTES = new Set([
+  "notify/pnl",
+  "notify/test",
+  "notify/review",
+  // The two paper writes the browser may make. Neither can start a trade:
+  // one halts the engine, the other lifts a halt whose reason the caller has
+  // had to read and echo back. Reasons travel as query parameters because this
+  // proxy forwards no request body - the same limitation that keeps
+  // research/screen off the list.
+  "paper/kill",
+  "paper/resume",
+])
 
 async function proxy(
   req: NextRequest,

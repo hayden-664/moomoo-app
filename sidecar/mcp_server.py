@@ -28,10 +28,22 @@ mcp = MCPServer(
         "Research tools cover any listed security, held or not: search, "
         "watchlist, quotes, candles, company profile, volatility, capital flow, "
         "earnings reactions, calendars and a stock screener.\n\n"
-        "This server reports facts. It cannot place, modify or cancel orders, "
-        "and it does not rank trades or judge whether any position, contract or "
-        "screened stock is a good idea. Report the numbers and let the user draw "
-        "conclusions; do not offer buy/sell/hold recommendations from this data.\n\n"
+        "This server reports facts. It cannot place, modify or cancel an order "
+        "through any tool here, on either account, and it does not rank trades "
+        "or judge whether any position, contract or screened stock is a good "
+        "idea. Report the numbers and let the user draw conclusions; do not "
+        "offer buy/sell/hold recommendations from this data.\n\n"
+        "A separate deterministic paper-trading engine does place orders, "
+        "against moomoo's simulated account only. The `paper_*` tools observe "
+        "it: status, decision journal, simulated positions, and a dry run that "
+        "evaluates the rules and places nothing. There is deliberately no tool "
+        "to start it, stop it or make it trade.\n\n"
+        "That engine reads a rules file the user wrote. You may read and "
+        "explain those rules and the journal, including which condition was "
+        "true and what it read. You may not author, tune, score or suggest a "
+        "rule, and you may not recommend one be enabled or disabled - that "
+        "would make the app's own judgement into the strategy, which is exactly "
+        "what the rules file exists to keep out.\n\n"
         "One exception carries someone else's opinion rather than a number: the "
         "`third_party_views` branch of `profile` returns analyst consensus and "
         "Morningstar's rating and fair value. Attribute those to the firm that "
@@ -316,6 +328,72 @@ async def stock_screener(
 )
 async def technicals(code: str, days: int = 400, ktype: str = "K_DAY") -> dict:
     return await _get("technicals", {"code": code, "days": days, "ktype": ktype})
+
+
+@mcp.tool(
+    description=(
+        "Paper trading engine status: whether it is armed or halted, the "
+        "strategy file hash and rule ids, orders placed today against the "
+        "daily cap, open simulated orders, and the last cycle - including the "
+        "symbols it considered and every symbol it excluded, with the reason.\n\n"
+        "The engine trades moomoo's simulated account only. Position sizes come "
+        "from the real account's equity so the results are at a realistic "
+        "scale, but no real money moves."
+    )
+)
+async def paper_status() -> dict:
+    return await _get("paper/status")
+
+
+@mcp.tool(
+    description=(
+        "Decision journal: every rule evaluation, including the ones that did "
+        "nothing. Each row carries the outcome (PLACED, BLOCKED, NO_MATCH, "
+        "PLACE_FAILED), the block reason where there is one, and the full "
+        "condition trace - which leaf was true and what value it read.\n\n"
+        "This is the record of what the engine did and why. Explain it; do not "
+        "assess whether the trades were good ones."
+    )
+)
+async def paper_journal(days: int = 7, limit: int = 100) -> list | dict:
+    return await _get("paper/journal", {"days": days, "limit": limit})
+
+
+@mcp.tool(
+    description=(
+        "Open positions on the simulated account. Same shape as `positions`, "
+        "which reports the real one - do not mix the two in a single figure."
+    )
+)
+async def paper_positions() -> list | dict:
+    return await _get("paper/positions")
+
+
+@mcp.tool(
+    description=(
+        "The parsed strategy file: rules, conditions, sizing and portfolio "
+        "limits, with the hash the journal records against each decision.\n\n"
+        "User-authored input, like a screener filter. Read it and explain what "
+        "it would do; never propose edits to it unless asked, and never rank "
+        "its rules."
+    )
+)
+async def paper_rules() -> dict:
+    return await _get("paper/rules")
+
+
+@mcp.tool(
+    description=(
+        "Evaluate the strategy right now and report the orders it would send, "
+        "without sending any of them. Runs the same universe, sizing and "
+        "guardrail pipeline a live cycle runs, so a blocked candidate comes "
+        "back with the reason it was blocked.\n\n"
+        "Places nothing, on either account. Use it to explain what the engine "
+        "would do; it is not a recommendation to do it."
+    )
+)
+async def paper_dry_run() -> dict | list:
+    return await _post("paper/dry-run?ignore_market_hours=true", {})
 
 
 if __name__ == "__main__":

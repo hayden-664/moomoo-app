@@ -260,3 +260,193 @@ def format_screen(results: list[dict], limit_per_code: int = 3) -> str:
         "\n<i>Screening output — contract mechanics only, not advice.</i>"
     )
     return "\n".join(blocks)
+
+
+def _trace_line(leaf: dict) -> str:
+    """One condition, as it was actually evaluated."""
+    mark = "✓" if leaf.get("result") else "✗"
+    target = leaf.get("target")
+    target = "" if target is None else f" {target}"
+    return f"{mark} {leaf.get('path')} = {leaf.get('resolved')} ({leaf.get('op')}{target})"
+
+
+def format_paper_order(order: dict, rule_id: str, trace: list[dict] | None = None) -> str:
+    """Receipt for a simulated order.
+
+    Says SIMULATED on every message. The whole value of this engine is that the
+    numbers are at real scale while the fills are not, and a receipt that reads
+    like a real one would erode exactly that distinction.
+    """
+    side = order.get("side", "?")
+    arrow = "\U0001f7e2" if side == "BUY" else "\U0001f534"
+    code = order.get("code", "?")
+    qty = order.get("qty")
+    limit = order.get("limit_price")
+
+    lines = [
+        f"{arrow} <b>SIMULATED {side} {qty} {code}</b> @ {money(limit or 0)} limit",
+        f"<i>rule: {rule_id}</i>",
+    ]
+    if order.get("stop_price"):
+        lines.append(
+            f"Stop reference: {money(order['stop_price'])} "
+            f"<i>(ATR {order.get('atr14')}, risk {money(order.get('risk_usd') or 0)})</i>"
+        )
+    if order.get("est_fee_round_trip"):
+        # Estimated, and said so every time: the paper account is charged
+        # nothing, so a receipt that quietly implied a real cost would be the
+        # one number on here that is not a measurement.
+        lines.append(
+            f"Est. round-trip cost: {money(order['est_fee_round_trip'])} "
+            f"({order.get('est_fee_pct')}% of the position)"
+        )
+    if order.get("breakeven_price"):
+        lines.append(
+            f"Breakeven after costs: {money(order['breakeven_price'])} "
+            f"<i>(estimated)</i>"
+        )
+    if order.get("scaled"):
+        lines.append(
+            f"⚠️ <i>Scaled to {qty} from {order.get('qty_intended')} — "
+            f"paper buying power, not the sizing rule</i>"
+        )
+    if order.get("order_id"):
+        lines.append(f"Order {order['order_id']} · {order.get('status', '?')}")
+
+    if trace:
+        lines.append("")
+        lines.append("<i>Conditions:</i>")
+        lines.extend(f"<code>{_trace_line(t)}</code>" for t in trace)
+
+    lines.append("")
+    lines.append(
+        "<i>Paper account. No real money moved, and no fees were charged — "
+        "the cost above is an estimate from the real account's own schedule.</i>"
+    )
+    return "\n".join(lines)
+
+
+def format_paper_fill(fill: dict) -> str:
+    side = fill.get("trd_side", "?")
+    arrow = "\U0001f7e2" if side == "BUY" else "\U0001f534"
+    qty, price = fill.get("qty"), fill.get("price")
+    notional = (qty or 0) * (price or 0)
+    return "\n".join(
+        [
+            f"{arrow} <b>SIMULATED FILL: {side} {qty} {fill.get('code')}</b> @ {money(price or 0)}",
+            f"Notional {money(notional)} · order {fill.get('order_id')}",
+            "<i>Paper account. No real money moved.</i>",
+        ]
+    )
+
+
+def _num(value) -> float | None:
+    """moomoo returns the string "N/A" where a number is expected."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if f != f else f
+
+
+def format_paper_session(summary: dict, extra: dict | None = None) -> str:
+    """The simulated book's own daily note.
+
+    Deliberately a separate message from the daily review rather than a section
+    inside it. The review reports a real brokerage account; this reports money
+    that does not exist. Merging them would put a fabricated P&L one line from a
+    real one under a single heading - the same provenance rule `pnl.py` follows
+    when it refuses to present `closed_realized` as broker truth, except that
+    two messages cannot be misread at a glance the way one label can.
+    """
+    extra = extra or {}
+    entries = summary.get("entries") or []
+    exits = summary.get("exits") or []
+    lines = [
+        "\U0001f9ea <b>Paper engine \u2014 simulated session</b>",
+        f"<i>{summary.get('session')} \u00b7 fake money, simulated account 5367857</i>",
+        "",
+    ]
+
+    # The first thing worth knowing is whether it ran at all.
+    if not summary.get("entries_evaluated"):
+        lines.append(
+            "\u26a0\ufe0f <b>Entries were never evaluated.</b> The window passed "
+            "with no cycle in it \u2014 nothing new could be bought."
+        )
+    else:
+        lines.append(f"Entry window ran. {len(entries)} entry(s), {len(exits)} exit(s).")
+
+    if entries or exits:
+        lines.append("")
+        for o in entries + exits:
+            filled = _num(o.get("dealt_qty")) or 0
+            px = _num(o.get("dealt_avg_price")) or _num(o.get("price"))
+            lines.append(
+                f"\u2022 {o.get('trd_side')} {html.escape(str(o.get('code')))} "
+                f"\u00d7{filled:g}"
+                + (f" @ {px:,.2f}" if px else "")
+                + f" \u2014 {o.get('status')}"
+            )
+        fee = summary.get("est_fees_round_trip") or 0
+        if fee:
+            lines.append(
+                f"<i>Est. round-trip cost {fee:,.2f} \u2014 modelled from the real "
+                f"account's fee history; the paper account is charged nothing.</i>"
+            )
+
+    blocked = summary.get("blocked") or {}
+    if blocked:
+        lines.append("")
+        lines.append("<i>Declined:</i> " + ", ".join(f"{r} \u00d7{n}" for r, n in blocked.items()))
+
+    nm = (summary.get("outcomes") or {}).get("NO_MATCH", 0)
+    lines.append("")
+    lines.append(
+        f"<i>{summary.get('cycles', 0)} cycle(s), {nm} condition(s) tested and not met.</i>"
+    )
+
+    equity = _num(extra.get("paper_equity"))
+    if equity is not None:
+        change = _num(extra.get("paper_change"))
+        lines.append(
+            f"<i>Simulated equity {equity:,.2f}"
+            + (f" ({change:+,.2f} on the session)" if change is not None else "")
+            + ".</i>"
+        )
+    if extra.get("halted"):
+        lines.append("")
+        lines.append(f"\U0001f6d1 <b>Engine halted:</b> {extra.get('kill_reason')}")
+
+    lines.append("")
+    lines.append(
+        "<i>No real money moved. Your real account is reported separately in the "
+        "daily review.</i>"
+    )
+    return "\n".join(lines)
+
+
+def format_paper_digest(status: dict) -> str:
+    """Daily note naming what the engine could not consider, and why.
+
+    Excluded symbols are named rather than dropped, for the same reason
+    unconvertible currencies are named in the P&L: a name that vanishes without
+    explanation looks identical to one that simply did not qualify.
+    """
+    universe = status.get("universe") or {}
+    excluded = universe.get("excluded") or []
+    lines = [
+        "\U0001f4dd <b>Paper engine — daily note</b>",
+        f"Considering {len(universe.get('considered') or [])} symbol(s).",
+    ]
+    if excluded:
+        lines.append("")
+        lines.append(f"<i>Excluded ({len(excluded)}):</i>")
+        for item in excluded:
+            lines.append(f"• {item['code']} — {item['reason']}: {item.get('detail','')}")
+    if status.get("killed"):
+        lines.append("")
+        lines.append(f"⚠️ <b>Engine halted:</b> {status.get('kill_reason')}")
+    lines.append("")
+    lines.append("<i>Paper account. No real money moved.</i>")
+    return "\n".join(lines)
