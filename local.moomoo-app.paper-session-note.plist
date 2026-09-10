@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Send the paper engine's simulated session note to Telegram each weekday.
+
+  This is a SEPARATE job and a SEPARATE message from local.moomoo-app.daily-review
+  on purpose. That one reports a real brokerage account; this one reports a
+  simulated account holding money that does not exist. Merging them would put a
+  fabricated P&amp;L one line from a real one under a single heading. Two messages
+  cannot be misread at a glance the way one label can.
+
+  It fires at 08:50, five minutes after the review, so the real numbers land
+  first. The US session closed at 04:00 local, so the day is complete by then.
+
+  Nothing fires while the Mac is off or asleep; launchd runs a missed job once
+  on wake, which is fine for a report (unlike for trading).
+
+  Install:
+    cp local.moomoo-app.paper-session-note.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/local.moomoo-app.paper-session-note.plist
+
+  Test without waiting:
+    launchctl start local.moomoo-app.paper-session-note
+
+  Remove:
+    launchctl unload ~/Library/LaunchAgents/local.moomoo-app.paper-session-note.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.moomoo-app.paper-session-note</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/private/var/my_projects/moomoo-app/run-paper-session-note.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/private/var/my_projects/moomoo-app</string>
+
+    <!-- TUESDAY to SATURDAY local, 08:50. Weekday 2=Tue … 6=Sat.
+         Not Mon-Fri: 08:50 local is the previous evening in New York, so
+         each run reports the session that closed at 04:00 that morning.
+         Tue-Sat local therefore covers exactly Mon-Fri in New York - and
+         Friday's session, which closes Saturday local, would otherwise
+         never be reported at all. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>50</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>50</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>50</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>50</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>6</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>50</integer>
+        </dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/moomoo-paper-session-note.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/moomoo-paper-session-note.err.log</string>
+</dict>
+</plist>
