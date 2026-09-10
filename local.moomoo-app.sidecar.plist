@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Optional: run the sidecar automatically at login so alerts fire without you
-  starting anything. This does NOT make alerts work while the Mac is off or
-  asleep — nothing running locally can do that.
+  Runs the sidecar automatically at login, so the alert scheduler and the paper
+  trading engine are up whenever the Mac is, without starting anything by hand.
 
-  Before installing, replace /path/to/moomoo-app below with the absolute path
-  to where you cloned this repo.
+  This does NOT make either work while the Mac is asleep — nothing running
+  locally can. Closing the lid on an Apple Silicon MacBook sleeps it unless an
+  external display is attached, and a sleeping Mac evaluates nothing. Unlike the
+  daily review, which launchd runs late on wake, a missed trading cycle is not
+  worth replaying, so the engine simply skips it.
+
+  The absolute path below is this repo's. Change it here and in
+  local.moomoo-app.daily-review.plist if the repo moves.
 
   Install:
     cp local.moomoo-app.sidecar.plist ~/Library/LaunchAgents/
@@ -22,11 +27,11 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/path/to/moomoo-app/run-sidecar.sh</string>
+        <string>/private/var/my_projects/moomoo-app/run-sidecar.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/path/to/moomoo-app</string>
+    <string>/private/var/my_projects/moomoo-app</string>
 
     <key>RunAtLoad</key>
     <true/>

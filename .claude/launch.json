@@ -4,7 +4,19 @@
     {
       "name": "moomoo-dashboard",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "moomoo-dev-raw",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:raw"
+      ],
       "port": 3000
     }
   ]
