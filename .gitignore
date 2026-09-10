@@ -43,6 +43,8 @@ next-env.d.ts
 # python sidecar
 sidecar/.venv/
 sidecar/__pycache__/
+# The paper package and its tests are subdirectories, so the line above misses them.
+sidecar/**/__pycache__/
 .env*
 !.env.example
 
