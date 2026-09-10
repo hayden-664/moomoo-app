@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "ktype": "K_DAY",
+
+  "_comment": [
+    "User-authored strategy. Nothing in this repo may generate, tune or rank a rule;",
+    "the code only evaluates what is written here.",
+    "",
+    "Field paths are dotted paths into the /technicals payload. There is no",
+    "field-to-field operator on purpose, so 'close is below the 50-day average' is",
+    "written as trend.pct_from.sma50 < 0 - the same statement, as a literal.",
+    "",
+    "'codes' scopes the universe. Leave it empty to consider every US holding and",
+    "watchlist name the paper account is authorised to trade.",
+    "",
+    "max_fee_pct_of_notional refuses an entry whose estimated round-trip cost is a",
+    "bigger share of the position than this. Fees here are nearly flat ($0.99",
+    "platform + ~0.115% stamp duty), so small positions are punished: a $650",
+    "position owes 0.55% round trip, a $1,950 one owes 0.35%. At 0.50% the engine",
+    "will not take a position under roughly $825.",
+    "",
+    "max_orders_per_day, max_orders_per_symbol_per_day and cooldown_days are all",
+    "budgets on NEW exposure - they count and gate entries only. An exit is never",
+    "refused by them, because a position the rules want closed must always be",
+    "closable. Raising this cap therefore buys more entries, not more churn.",
+    "",
+    "What actually limits entries per day here is max_concurrent_positions (8) and",
+    "cooldown_days (1): a slot has to be free before anything new is bought, so a",
+    "cap above 8 is an outer safety limit rather than the throughput lever.",
+    "",
+    "max_open_notional_pct is measured against the REAL account's equity, because",
+    "that is what sized the position - against the paper account's own million it",
+    "would never bind. On ~13k of real equity, positions land near 900-1,500, so 8",
+    "of them is roughly 74%: below 80 this ceiling would bind before the position",
+    "count did and the 8 would be decorative.",
+    "",
+    "Note that max_notional_pct is rarely the binding constraint on this account:",
+    "risk_pct 1% over a 2x ATR stop already caps most positions near $900-1,500,",
+    "below the 15% ceiling. If you want the fee burden proportionally smaller, the",
+    "lever is a larger position - raise risk_pct or tighten atr_mult_stop - not a",
+    "looser limit here. The paper account is charged nothing, so without this",
+    "guard the simulation would count fee-driven losses as wins."
+  ],
+
+  "codes": [],
+
+  "defaults": {
+    "risk_pct": 1.0,
+    "atr_mult_stop": 2.0,
+    "max_notional_pct": 15.0,
+    "cooldown_days": 1,
+    "time_in_force": "DAY",
+    "session": "RTH",
+    "limit_offset_pct": 0.15
+  },
+
+  "portfolio": {
+    "max_concurrent_positions": 8,
+    "max_open_notional_pct": 80.0,
+    "max_orders_per_day": 12,
+    "max_orders_per_symbol_per_day": 1,
+    "max_daily_loss_pct": 2.0,
+    "flatten_before_close_minutes": 20,
+    "on_insufficient_paper_power": "reject",
+    "max_fee_pct_of_notional": 0.50
+  },
+
+  "rules": [
+    {
+      "id": "macd_cross_up",
+      "enabled": true,
+      "side": "BUY",
+      "when": {
+        "all": [
+          { "field": "momentum.macd_cross.direction", "op": "eq", "value": "above" },
+          { "field": "momentum.macd_cross.crossed_within", "op": "lte", "value": 2 },
+          { "field": "momentum.rsi14", "op": "lt", "value": 65 },
+          { "field": "volatility.atr_pct_of_price", "op": "between", "value": [1.0, 6.0] }
+        ]
+      },
+      "exit": {
+        "any": [
+          { "field": "trend.pct_from.sma50", "op": "lt", "value": 0 },
+          { "field": "momentum.rsi_zone", "op": "eq", "value": "above_70" }
+        ]
+      },
+      "size": { "risk_pct": 1.0, "atr_mult_stop": 2.0 }
+    }
+  ]
+}
