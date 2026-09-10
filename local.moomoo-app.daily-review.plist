@@ -34,6 +34,10 @@
     <key>ProgramArguments</key>
     <array>
         <string>/private/var/my_projects/moomoo-app/run-daily-review.sh</string>
+        <!-- Same once-per-calendar-day guard start-dev.sh uses. Without it the
+             two paths both send and you get two reviews on any morning you
+             start the dev server - which happened on 2026-09-10. -->
+        <string>--if-due</string>
     </array>
 
     <!-- Must be the repo root: .mcp.json is project-scoped, and the moomoo

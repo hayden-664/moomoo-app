@@ -72,6 +72,16 @@ if [ "$IF_DUE" -eq 1 ]; then
         log "weekend; skipping"
         exit 0
     fi
+    # The review's own premise is that the US session has closed - it says so
+    # under "Timing context", and every number in it is read as an overnight
+    # close. Local time is UTC+8, so the close lands at 04:00-05:00 and a run
+    # before then reports a session still in progress as though it were final.
+    # Starting the dev server at 02:55 used to do exactly that.
+    EARLIEST="${REVIEW_EARLIEST_HOUR:-6}"
+    if [ "$(date +%H)" -lt "$EARLIEST" ]; then
+        log "US session has not closed yet locally (before ${EARLIEST}:00); skipping"
+        exit 0
+    fi
 fi
 
 # When invoked from start-dev.sh the sidecar is booting in parallel, so a short
