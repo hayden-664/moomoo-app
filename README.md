@@ -1,7 +1,7 @@
 # moomoo-app
 
-Read-only moomoo portfolio dashboard, options screener, and Telegram alerts —
-running entirely on localhost.
+Read-only moomoo portfolio dashboard, options screener, Telegram alerts, and a
+paper-trading engine — running entirely on localhost.
 
 ```
 Claude Code ──(moomoo Agent Hub skills)──┐
@@ -30,13 +30,48 @@ unpatched critical advisories with no fix available. The Python SDK is the
 officially supported path, is what moomoo's own Agent Hub skill drives, and
 means Claude and this dashboard share one integration instead of two.
 
-## Read-only by construction
+## The real account is read-only by construction
 
-There is no order-placing endpoint anywhere in this codebase. `sidecar/
-moomoo_client.py` runs an `assert_read_only()` check at import time that
-crashes the process if `place_order`, `modify_order` or `unlock_trade` ever
-appear in it, and the Next.js proxy uses an explicit route allowlist. Placing
-trades stays in the moomoo app, where it belongs.
+Nothing in this codebase can place an order against the real account.
+`sidecar/moomoo_client.py` holds the only context pointed at it and runs an
+`assert_read_only()` check at import time that crashes the process if
+`place_order`, `modify_order` or `unlock_trade` ever appear in it. The Next.js
+proxy uses an explicit route allowlist. Real trading stays in the moomoo app,
+where it belongs.
+
+## The paper engine
+
+`sidecar/paper/` is a deterministic rules engine that *does* place orders —
+against moomoo's **simulated** account only. Signals and position sizes come
+from real market data and the real account's equity, so the results are at a
+realistic scale; the fills cost nothing.
+
+It is off by default (`PAPER_ENABLED=false`) and cannot be pointed at the real
+account. The account id and trading environment are module constants, not
+settings, and four independent things would have to fail before a real order
+were possible — a static AST guard over the package, a trade context that
+cannot see the real account, an SDK check on the account/environment pair, and
+a runtime re-verification before every write. `AGENTS.md` documents all four;
+`sidecar/tests/` proves the guard fails closed, including for the
+`getattr(ctx, "place_order")` form the older substring check cannot see.
+
+Rules live in `sidecar/paper/rules.json`, which you write. The engine evaluates
+them and records which condition was true; it never scores a symbol, ranks
+candidates or suggests a rule. Every order and fill goes to Telegram, and every
+evaluation — including the ones that did nothing — is kept in a SQLite journal
+visible at `/paper` and through the `paper_*` MCP tools.
+
+Costs are modelled, because the paper account is never charged them:
+`order_fee_query` refuses simulated orders, so an un-modelled round trip that
+really loses money would be recorded as a win. `paper/fees.py` estimates the
+cost from your real account's own fee history — a flat $0.99 platform fee plus
+~0.115% stamp duty, which makes small positions expensive — and
+`max_fee_pct_of_notional` refuses an entry whose round trip would eat more of
+the position than you allow. Entries only: refusing an exit on cost grounds
+would trap you in it.
+
+Run `POST /paper/dry-run` for a week before arming it: it walks the same
+pipeline and reports the orders it would have sent, placing none.
 
 ## Prerequisites
 
@@ -296,3 +331,13 @@ Interactive docs at <http://localhost:8788/docs>.
 ## License
 
 [MIT](LICENSE)
+
+### Simulated session note
+
+`local.moomoo-app.paper-session-note` sends the paper engine's daily summary to
+Telegram at 08:50 on weekdays, as a **separate message** from the daily review.
+The review reports the real account; this reports the simulated one. They are
+never combined.
+
+    cp local.moomoo-app.paper-session-note.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/local.moomoo-app.paper-session-note.plist
