@@ -42,7 +42,10 @@ next-env.d.ts
 
 # python sidecar
 sidecar/.venv/
-sidecar/__pycache__/
+# Unanchored on purpose: a pattern with a slash in it matches only that exact
+# path, so the old `sidecar/__pycache__/` missed every nested package.
+__pycache__/
+*.py[cod]
 .env*
 !.env.example
 

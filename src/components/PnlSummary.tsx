@@ -56,6 +56,16 @@ export default function PnlSummary({
     source,
   } = pnl.conversion
 
+  // The positions table can show more rows than this counts: after an outright
+  // sale the broker keeps returning the position at qty 0 until it drops the
+  // row. Those are not holdings — they are excluded from the count, and from
+  // net P&L, so the difference is named here rather than left to puzzle over.
+  const positionNote =
+    `${pnl.position_count} open position${pnl.position_count === 1 ? "" : "s"}` +
+    (pnl.open.flat_count
+      ? ` · ${pnl.open.flat_count} sold out, still listed by the broker`
+      : "")
+
   return (
     <section className="space-y-3">
       {/* The totals are a conversion, so say at what rate. Without this the
@@ -96,7 +106,7 @@ export default function PnlSummary({
           value={pnl.net}
           currency={base}
           emphasis
-          note={`${pnl.position_count} open position${pnl.position_count === 1 ? "" : "s"}`}
+          note={positionNote}
         />
         <Stat label="Today" value={pnl.open.today} currency={base} />
         <Stat

@@ -32,6 +32,26 @@ net until the broker reported on it too. An earlier version before that
 dropped (4) entirely, on the assumption that open position P&L already
 covered it; it does not, and those gains went missing from the net.
 
+A position that has been sold out entirely does not leave
+``position_list_query`` immediately: the broker keeps the row, at ``qty`` 0,
+until it drops it (typically after the session). That row still carries a
+``realized_pl``, so for as long as it lingers the same exit is visible from
+both directions -- once as the broker's figure in (2), once as the FIFO
+round-trip in (3) -- and adding both inflates the net by the size of the trade
+that was just closed, which then "corrects" itself when the row disappears.
+The two are reconciled per symbol: a symbol the reconstruction has already
+closed out is taken from (3) alone and its leftover broker row ignored. (3) is
+the better figure of the two anyway -- the broker's ``realized_pl`` resets to
+zero every time a position goes flat and is re-opened, so it only covers the
+most recent round-trip, and it is measured against average cost rather than
+FIFO lots. The exception is a symbol whose opening buys predate the deal
+window, which the reconstruction cannot close out; there is no (3) for it, so
+the broker's row is still what gets used.
+
+Rows at zero quantity are also not counted as open positions, and the count of
+them is carried in ``open.flat_count`` so the difference from what moomoo's own
+app shows is visible rather than mysterious.
+
 This account trades both US (USD) and Bursa (MYR). Figures are bucketed by
 settlement currency first, then converted into the reporting currency and
 summed, so the headline numbers are a single comparable total. What is *not*
@@ -92,6 +112,9 @@ def _empty_open(ccy: str) -> dict:
         "market_value": 0.0,
         "cost_basis": 0.0,
         "position_count": 0,
+        # Rows the broker still reports at qty 0 after an outright sale. Not
+        # positions, but they are in the payload and they carry figures.
+        "flat_count": 0,
     }
 
 
@@ -116,7 +139,13 @@ def summarise_positions(positions: Iterable[dict], base: str = "USD") -> dict[st
         # partly sold reports less than was paid -- and one that has been sold
         # down hard reports a NEGATIVE cost. Cost basis means money put in.
         block["cost_basis"] += _f(p, "average_cost", "cost_price", "diluted_cost") * qty
-        block["position_count"] += 1
+        # A row at zero quantity is a sold-out position the broker has not
+        # dropped yet, not something held. Counting it makes the dashboard
+        # claim more open positions than there are, for the rest of the day.
+        if qty:
+            block["position_count"] += 1
+        else:
+            block["flat_count"] += 1
     for block in out.values():
         for key in ("open_unrealized", "open_realized", "today", "market_value", "cost_basis"):
             block[key] = round(block[key], 2)
@@ -258,11 +287,24 @@ def _combine(ccy: str, open_side: dict, closed_side: dict, partial_side: dict) -
     # too -- money that was never lost, just temporarily unaccounted for. This
     # is not hypothetical: a single TMDX sale once zeroed MU's and META's
     # banked gains out of net for a day.
+    #
+    # A symbol the reconstruction has already closed out is excluded from this
+    # entirely: its whole round-trip is in `closed_realized` below, and the
+    # broker row it still has (at qty 0, until the broker drops it after an
+    # outright sale) would add the same exit a second time. That is what made
+    # net P&L jump the moment a position was sold and settle back a day later
+    # when the row vanished -- a full META round-trip counted twice.
     broker_by_symbol = open_side.get("open_realized_by_symbol", {})
     derived_by_symbol = partial_side["by_symbol"]
+    closed_by_symbol = closed_side["by_symbol"]
     banked_by_symbol: dict[str, float] = {}
     broker_symbols: list[str] = []
+    superseded: list[str] = []
     for code in sorted(set(broker_by_symbol) | set(derived_by_symbol)):
+        if code in closed_by_symbol:
+            if broker_by_symbol.get(code):
+                superseded.append(code)
+            continue
         broker_v = broker_by_symbol.get(code, 0.0)
         if broker_v:
             banked_by_symbol[code] = round(broker_v, 2)
@@ -276,6 +318,10 @@ def _combine(ccy: str, open_side: dict, closed_side: dict, partial_side: dict) -
     # reconstruction. `partial.partial_realized`/`by_symbol` stay the pure,
     # unmixed derived reconstruction; this is what actually went into `net`.
     partial_side["broker_symbols"] = broker_symbols
+    # The other half of that provenance: symbols whose still-present broker row
+    # was deliberately left out because the reconstruction had already closed
+    # them. Named rather than silently dropped, like everything else here.
+    closed_side["superseded_broker"] = superseded
     banked = round(sum(banked_by_symbol.values()), 2)
     # Everything actually cashed out: finished round-trips plus what was taken
     # off the table from positions still held. Computed here rather than in each
@@ -322,6 +368,7 @@ def _convert(
     converted_from: list[str] = []
     net = realized = 0.0
     broker_symbols: list[str] = []
+    superseded: list[str] = []
 
     for ccy, b in by_currency.items():
         rate = usable.get(ccy)
@@ -334,11 +381,13 @@ def _convert(
         for key in ("open_unrealized", "open_realized", "today", "market_value", "cost_basis"):
             open_t[key] += o[key] * rate
         open_t["position_count"] += o["position_count"]
+        open_t["flat_count"] += o["flat_count"]
         closed_t["closed_realized"] += b["closed"]["closed_realized"] * rate
         partial_t["partial_realized"] += b["partial"]["partial_realized"] * rate
         # Decided per symbol within each currency's own _combine call; just
         # collect which symbols (across every currency) had a broker figure.
         broker_symbols.extend(b["partial"]["broker_symbols"])
+        superseded.extend(b["closed"]["superseded_broker"])
         realized += b["total_realized"] * rate
         net += b["net"] * rate
         for code, v in b["closed"]["by_symbol"].items():
@@ -351,6 +400,7 @@ def _convert(
     closed_t["closed_realized"] = round(closed_t["closed_realized"], 2)
     partial_t["partial_realized"] = round(partial_t["partial_realized"], 2)
     partial_t["broker_symbols"] = sorted(broker_symbols)
+    closed_t["superseded_broker"] = sorted(superseded)
 
     def sort_desc(d: dict[str, float]) -> dict[str, float]:
         return dict(sorted(d.items(), key=lambda kv: kv[1], reverse=True))

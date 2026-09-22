@@ -37,6 +37,12 @@ export type OpenPnl = {
   market_value: number
   cost_basis: number
   position_count: number
+  /**
+   * Rows the broker still returns at qty 0 after an outright sale, until it
+   * drops them. Excluded from `position_count`, so this is the difference
+   * between it and the number of rows in the positions table.
+   */
+  flat_count: number
 }
 
 export type ClosedPnl = {
@@ -46,6 +52,12 @@ export type ClosedPnl = {
   /** Derived by FIFO-matching deal history, not reported by the broker. */
   approximate: true
   excludes: string[]
+  /**
+   * Symbols sold out entirely whose lingering qty-0 position row still carried
+   * a broker `realized_pl`. That figure is ignored in favour of the
+   * reconstruction here — counting both booked the same exit twice.
+   */
+  superseded_broker: string[]
 }
 
 /** Banked by selling part of a holding you still own. Derived, like ClosedPnl. */
