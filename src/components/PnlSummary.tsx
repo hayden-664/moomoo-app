@@ -66,37 +66,16 @@ export default function PnlSummary({
       ? ` · ${pnl.open.flat_count} sold out, still listed by the broker`
       : "")
 
+  const fx = converted.map((c) => fxLabel(c, base, rates[c])).join(" · ")
+
   return (
     <section className="space-y-3">
-      {/* The totals are a conversion, so say at what rate. Without this the
-          page looks like a pure dollar account, which it is not. */}
-      {converted.length > 0 && (
-        <div className="rounded-lg border border-border bg-surface px-4 py-3 text-sm">
-          <div className="font-medium">
-            {converted.join(", ")} converted into {base}
-          </div>
-          <div className="mt-1 text-muted">
-            Every figure below is one {base} total, at{" "}
-            {converted.map((c) => fxLabel(c, base, rates[c])).join(" · ")} —{" "}
-            {source}. Realized figures use today&apos;s rate rather than the
-            rate on each trade date, so they drift with the currency.
-          </div>
-        </div>
-      )}
-
       {/* A currency with no solvable rate is left out of the totals entirely.
           It has to be said out loud rather than quietly rounding to zero. */}
       {unconverted.length > 0 && (
-        <div className="rounded-lg border border-neg/40 bg-neg/10 px-4 py-3 text-sm">
-          <div className="font-medium text-neg">
-            {unconverted.join(", ")} not included — no exchange rate available
-          </div>
-          <div className="mt-1 text-muted">
-            Figures in {unconverted.join(", ")} are excluded from the totals
-            below rather than being added at face value. Rates come from the
-            broker; if this persists, check that OpenD is connected and the
-            account reports a balance.
-          </div>
+        <div className="rounded-lg border border-neg/40 bg-neg/10 px-4 py-2 text-sm text-neg">
+          {unconverted.join(", ")} excluded from totals — no exchange rate
+          available.
         </div>
       )}
 
@@ -113,13 +92,13 @@ export default function PnlSummary({
           label="Open unrealized"
           value={pnl.open.open_unrealized}
           currency={base}
-          note="Mark-to-market, broker-reported"
+          note="Broker-reported"
         />
         <Stat
           label="Realized"
           value={pnl.total_realized}
           currency={base}
-          note={`Cashed out since ${pnl.window.start} · approximate`}
+          note={`Approximate${converted.length ? " · today's FX" : ""}`}
         />
       </div>
 
@@ -152,26 +131,44 @@ export default function PnlSummary({
             </span>
           </span>
         )}
+        {/* The totals are a conversion, so the rate stays on the page. */}
+        {converted.length > 0 && (
+          <span className="text-muted sm:ml-auto" title={source}>
+            In {base} · {fx}
+          </span>
+        )}
       </div>
 
-      {/* The provenance of each number matters more than usual here: only open
-          unrealized is broker-reported; realized is reconstructed from deals. */}
-      <p className="text-xs leading-relaxed text-muted">
-        <strong className="text-foreground">How net P&amp;L is built:</strong>{" "}
-        open unrealized comes straight from the broker. Realized is
-        reconstructed by FIFO-matching {pnl.window.deals} deals over{" "}
-        {pnl.window.start} → {pnl.window.end}, because this account reports no
-        realized P&amp;L of its own — it combines{" "}
-        {fmt(pnl.closed.closed_realized, base)} from positions you are fully out
-        of with {fmt(pnl.total_realized - pnl.closed.closed_realized, base)}{" "}
-        banked from selling part of holdings you still own. It excludes{" "}
-        {pnl.closed.excludes.join(", ")}, so treat it as an estimate rather than
-        a statement.
-        {converted.length > 0 &&
-          ` Each deal is attributed to its market's currency and converted into ${base} at ${converted
-            .map((c) => fxLabel(c, base, rates[c]))
-            .join(", ")}.`}
-      </p>
+      {/* Provenance, one click away: only open unrealized is broker-reported;
+          realized is reconstructed from deals. */}
+      <details className="text-xs text-muted">
+        <summary className="cursor-pointer select-none hover:text-foreground">
+          How these numbers are built
+        </summary>
+        <div className="mt-2 space-y-1.5 leading-relaxed">
+          <p>
+            <strong className="text-foreground">Open unrealized</strong> comes
+            straight from the broker.
+          </p>
+          <p>
+            <strong className="text-foreground">Realized</strong> is
+            reconstructed by FIFO-matching {pnl.window.deals} deals (
+            {pnl.window.start} → {pnl.window.end}):{" "}
+            {fmt(pnl.closed.closed_realized, base)} from positions fully
+            exited, {fmt(pnl.total_realized - pnl.closed.closed_realized, base)}{" "}
+            from partial sells. It excludes {pnl.closed.excludes.join(", ")} —
+            except dividends on positions still held, which arrive inside the
+            broker&apos;s realized figure.
+          </p>
+          {converted.length > 0 && (
+            <p>
+              <strong className="text-foreground">Currency:</strong> each
+              figure is converted into {base} at {fx} ({source}). Realized
+              figures use today&apos;s rate, not the trade-date rate.
+            </p>
+          )}
+        </div>
+      </details>
     </section>
   )
 }

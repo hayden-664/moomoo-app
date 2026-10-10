@@ -1,6 +1,7 @@
 import type {
   Account,
   Candles,
+  Dividends,
   Fill,
   Health,
   Permissions,
@@ -35,6 +36,7 @@ export const api = {
   account: () => get<Account>("account"),
   positions: () => get<Position[]>("positions"),
   pnl: (days = 365) => get<Pnl>("pnl", { days }),
+  dividends: (days = 365) => get<Dividends>("dividends", { days }),
   quota: () => get<Quota>("quota"),
   candles: (code: string, days = 365) =>
     get<Candles>("candles", { code, days }),

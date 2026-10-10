@@ -24,7 +24,8 @@ mcp = MCPServer(
     instructions=(
         "Read-only access to Hayden's moomoo brokerage account and to moomoo's "
         "market data.\n\n"
-        "Account tools cover balances, positions, net P&L and deal history. "
+        "Account tools cover balances, positions, net P&L, estimated dividends "
+        "and deal history. "
         "Research tools cover any listed security, held or not: search, "
         "watchlist, quotes, candles, company profile, volatility, capital flow, "
         "earnings reactions, calendars and a stock screener.\n\n"
@@ -70,7 +71,15 @@ async def health() -> dict:
     return await _get("health")
 
 
-@mcp.tool(description="Quote entitlements per market. Explains why option screening may be unavailable.")
+@mcp.tool(
+    description=(
+        "Quote entitlements per market. Explains why option screening, or quotes "
+        "for a whole market, may be unavailable. A market with stock right `NO` "
+        "(MY on this account) still shows in positions, P&L and the stock "
+        "screener, but quote, candles, technicals, profile and capital_flow fail "
+        "for its codes."
+    )
+)
 async def permissions() -> dict:
     return await _get("permissions")
 
@@ -112,6 +121,31 @@ async def positions() -> list | dict:
 )
 async def pnl(days: int = 365) -> dict:
     return await _get("pnl", {"days": days})
+
+
+@mcp.tool(
+    description=(
+        "Dividend income, ESTIMATED: moomoo's per-share dividend history times "
+        "shares held going into each ex-date, reconstructed from deal history. "
+        "The broker does not report credited dividends, so this is derived — "
+        "always call it approximate. Amounts are GROSS of withholding tax (the "
+        "US withholds on dividends to non-resident accounts), so the cash "
+        "actually received is typically less.\n\n"
+        "`paid` splits into `paid_in_net` — already inside `pnl`'s net, because "
+        "moomoo folds a held position's dividends into its broker realized_pl — "
+        "and `paid_not_in_net` (closed or re-opened holdings), which is the only "
+        "part missing from net. Never add `paid` to net; it double-counts. "
+        "`pending` (ex-date passed, not yet payable) is in neither. Totals are "
+        "converted into `base` at today's rate. `upcoming` lists announced dividends "
+        "on current holdings. `unavailable` names symbols whose history could "
+        "not be read (Bursa codes need the MY quote entitlement; others may be "
+        "waiting on the rate limit), `unreconciled` names holdings the deal "
+        "history cannot fully explain, and `conversion.unconverted` names "
+        "currencies left out of the totals. Mention any that are non-empty."
+    )
+)
+async def dividends(days: int = 365) -> dict:
+    return await _get("dividends", {"days": days})
 
 
 @mcp.tool(description="Executed deals over the given window, most useful for reviewing closed trades.")

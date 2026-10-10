@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { api } from "@/lib/api"
-import type { Account, Health, Pnl, Position } from "@/lib/types"
+import type { Account, Dividends, Health, Pnl, Position } from "@/lib/types"
+import DividendsSummary from "./DividendsSummary"
 import { fmt } from "./Money"
 import PnlSummary from "./PnlSummary"
 import PositionChart from "./PositionChart"
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [pnl, setPnl] = useState<Pnl | null>(null)
   const [positions, setPositions] = useState<Position[] | null>(null)
   const [account, setAccount] = useState<Account | null>(null)
+  const [dividends, setDividends] = useState<Dividends | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [updated, setUpdated] = useState<Date | null>(null)
   const [notifying, setNotifying] = useState(false)
@@ -61,15 +63,18 @@ export default function Dashboard() {
           setError(h.error ?? "OpenD is not connected. Start OpenD and log in.")
           return
         }
-        const [p, pos, acc] = await Promise.all([
+        // Dividends are supplementary: a failure there must not blank P&L.
+        const [p, pos, acc, div] = await Promise.all([
           api.pnl(days),
           api.positions(),
           api.account().catch(() => null),
+          api.dividends(days).catch(() => null),
         ])
         if (!alive()) return
         setPnl(p)
         setPositions(pos)
         setAccount(acc)
+        setDividends(div)
         setError(null)
         setUpdated(new Date())
       } catch (e) {
@@ -223,16 +228,11 @@ export default function Dashboard() {
 
       {pnl && <PnlSummary pnl={pnl} account={account} />}
 
+      {dividends && <DividendsSummary dividends={dividends} />}
+
       {positions && (
         <section className="space-y-4">
-          <div className="flex items-baseline gap-3">
-            <h2 className="text-sm font-medium text-muted">Positions</h2>
-            <span className="text-xs text-muted">
-              {selected
-                ? "Click the row again to close the chart"
-                : "Click a row to chart it"}
-            </span>
-          </div>
+          <h2 className="text-sm font-medium text-muted">Positions</h2>
           {groupByMarket(positions).map(([market, rows]) => (
             <div key={market} className="space-y-2">
               <div className="flex items-baseline gap-2 text-xs text-muted">

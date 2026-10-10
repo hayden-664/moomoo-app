@@ -113,10 +113,10 @@ def profile(code: str) -> dict:
 def volatility(code: str) -> dict:
     """Implied and historical volatility for an underlying.
 
-    Worth having even though US option *chains* are not entitled on this
-    account: ``get_option_underlying_overview`` reports IV, IV rank, IV
-    percentile and 30/60-day HV for the underlying and answers "is this name
-    expensive right now" without any option-chain permission.
+    ``get_option_underlying_overview`` reports IV, IV rank, IV percentile and
+    30/60-day HV for the underlying without needing an option-chain
+    entitlement, so it answers "is this name expensive right now" even for a
+    market whose chains are not entitled.
     """
     rows = client.research(
         f"volatility:{code}",
@@ -159,11 +159,31 @@ def earnings_reaction(code: str) -> Any:
 # 7-day slices exactly like the option chain's 30-day cap in screener.py.
 _EARNINGS_SPAN_DAYS = 7
 
+# Markets each calendar accepts, from the API's own rejection messages rather
+# than its docstrings (which list AU/CA for earnings; the server refuses them).
+# Bursa has a dividend calendar but no earnings calendar at all.
+_CALENDAR_MARKETS = {
+    "earnings": {"US", "HK", "SH", "SZ", "SG", "JP"},
+    "dividends": {"US", "HK", "MY", "SG", "JP"},
+}
+
 
 def calendar(kind: str, market: str = "US", days: int = 7) -> dict:
     """Upcoming earnings, dividends or macro events."""
     today = dt.date.today()
     end = today + dt.timedelta(days=days)
+
+    supported = _CALENDAR_MARKETS.get(kind)
+    if supported is not None and market not in supported:
+        return {
+            "kind": kind,
+            "market": market,
+            "rows": [],
+            "unsupported": (
+                f"moomoo has no {kind} calendar for {market}; "
+                f"supported markets: {', '.join(sorted(supported))}"
+            ),
+        }
 
     if kind == "earnings":
         rows: list[dict] = []
