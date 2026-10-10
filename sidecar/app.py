@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import dividends
 import indicators
 import klines
 import research
@@ -120,16 +121,25 @@ def permissions() -> dict:
         v = info.get(key)
         return None if v in (None, "", "N/A") else str(v)
 
+    # MY/SG/JP carry a stock right only. They are listed even when "NO" so a
+    # failed Bursa quote can be explained: positions and the screener still
+    # work for MY.* codes, but quotes, candles and profiles do not.
     markets = {
         "US": {"stock": right("us_qot_right"), "option": right("us_option_qot_right")},
         "HK": {"stock": right("hk_qot_right"), "option": right("hk_option_qot_right")},
         "CN": {"stock": right("cn_qot_right"), "option": None},
+        "MY": {"stock": right("my_stock_qot_right"), "option": None},
+        "SG": {"stock": right("sg_stock_qot_right"), "option": None},
+        "JP": {"stock": right("jp_stock_qot_right"), "option": None},
     }
+
+    def enabled(kind: str) -> list[str]:
+        return [m for m, r in markets.items() if r[kind] and r[kind] != "NO"]
+
     return {
         "markets": markets,
-        "options_enabled": [
-            m for m, r in markets.items() if r["option"] and r["option"] != "NO"
-        ],
+        "options_enabled": enabled("option"),
+        "stocks_enabled": enabled("stock"),
     }
 
 
@@ -234,6 +244,28 @@ def pnl(days: int = Query(PNL_LOOKBACK_DAYS, ge=1, le=PNL_LOOKBACK_DAYS)) -> dic
     # matching the net beside it; the whole-account count is separate.
     summary["total_position_count"] = len(positions)
     return summary
+
+
+@app.get("/dividends")
+def dividends_received(days: int = Query(365, ge=1, le=PNL_LOOKBACK_DAYS)) -> dict:
+    """Dividends estimated from dividend history x shares held at each ex-date.
+
+    Derived and gross of withholding tax; reported beside net P&L, never in it.
+    Deals come from the same full-lookback cache as ``/pnl``, so this costs no
+    extra deal-history calls.
+    """
+    start, end = _default_window(days)
+    full_start, _ = _default_window(PNL_LOOKBACK_DAYS)
+    positions = client.positions()
+    try:
+        deals = client.deal_history(full_start, end)
+    except MoomooError as exc:
+        log.warning("deal history unavailable: %s", exc)
+        deals = []
+    rates, rate_source = _fx_rates(positions + deals)
+    return dividends.estimate(
+        positions, deals, since=start, base=CURRENCY, rates=rates, rate_source=rate_source
+    )
 
 
 @app.get("/history")

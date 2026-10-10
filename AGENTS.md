@@ -83,6 +83,13 @@ zero results instead:
   A 15s dashboard poll trips this. Results are cached for 5 minutes and the
   last good value is served on failure — otherwise a transient limit silently
   zeroes closed P&L and net P&L visibly flickers.
+- **`get_corporate_actions_dividends` is rate-limited to 30 calls per 30
+  seconds**, fewer than the symbols this account has held. `dividends.py`
+  caches each history for 12h and fetches at most 25 uncached per request;
+  the rest show under `unavailable` until a later request fills them. Its
+  payload is free text in two shapes — `"Cash Dividend: 1.65 USD Per Share"`
+  with `10/06/2026` dates, and `"Cash Dividend: 1.8226USD"` with
+  `Sep 28, 2026` dates (VOO). Anything else lands in `unparsed`, never dropped.
 - **`get_option_chain` caps the expiry span at 30 days.** `screen()` walks the
   requested window in 29-day slices.
 - **`OptionDataFilter.delta_min/max` take RAW delta (0.15), not percent.**
@@ -101,13 +108,13 @@ zero results instead:
   Those keys are not JSON-serialisable, so `MoomooClient.stock_filter`
   flattens them. Screener percent fields also take whole numbers: `20` is 20%.
 
-# Volatility survives the option entitlement gap
+# Volatility does not need the option chain
 
-`us_option_qot_right` is `NO`, so chains fail — but
-`get_option_underlying_overview` still returns IV, IV rank, IV percentile and
-30/60-day HV for US underlyings. `research.volatility()` uses it, and it is
-the only way to answer "is this name's option pricing rich" on this account.
-Do not assume an option-shaped question needs the chain.
+`get_option_underlying_overview` returns IV, IV rank, IV percentile and
+30/60-day HV for an underlying without any option-chain entitlement.
+`research.volatility()` uses it. Do not assume an option-shaped question needs
+the chain — it was the only route while US options were unentitled, and is
+still the cheaper one.
 
 # Third-party ratings are quoted, never adopted
 
@@ -118,9 +125,26 @@ carried with a `source` note so they can be reported as "Morningstar says X".
 Never surface them as the app's own view, and never let them leak into a
 surface that otherwise only reports derived numbers.
 
-# Quote entitlements gate the screener
+# Quote entitlements gate what works per market
 
-`us_option_qot_right` is `NO` on this account, so US option chains fail with a
-permission error no matter what the code does — it is a subscription, not a
-bug. `/permissions` exposes the entitlement map and the screener UI warns
-before running. US *stocks* are LV3 and HK options are LV1.
+Entitlements change with subscriptions, so read `/permissions` rather than
+trusting this file. As of 2026-10: US stocks LV3, US options LV1 (was `NO`
+until then; chains now work), HK stocks and options LV1, and **MY, SG and JP
+stocks `NO`**. A missing entitlement is a subscription, not a bug — the
+screener UI and `scheduler._entitled_markets()` read the map live.
+
+For Bursa (`MY.*`) that means positions, P&L, deal history, `search` and the
+stock screener work, but `quote`, `candles`, `technicals`, `profile`,
+`capital_flow` and dividend history fail with "No permission to get quotes".
+moomoo has no earnings calendar for MY at all, regardless of entitlement;
+`research.calendar()` returns `unsupported` for it rather than an error.
+
+# Dividends are partly inside net P&L already
+
+`dividends.py` estimates dividends as per-share history x shares held going
+into each ex-date. The broker folds a held position's dividends into that
+row's `realized_pl` on the payable date (NEE, AVGO and VOO reconcile to the
+cent), and `pnl.py` puts that figure into net. Dividends from holdings since
+closed or re-opened are in net nowhere. So the result splits `paid` into
+`paid_in_net` and `paid_not_in_net` — never add `paid` to net. Figures are
+gross of withholding tax; keep saying so.

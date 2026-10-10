@@ -203,6 +203,72 @@ export type Health = {
 export type Permissions = {
   markets: Record<string, { stock: string | null; option: string | null }>
   options_enabled: string[]
+  /** Markets whose stock quotes are entitled. MY is "NO" on this account. */
+  stocks_enabled: string[]
+}
+
+export type DividendEvent = {
+  code: string
+  ex_date: string
+  payable_date: string | null
+  per_share: number
+  currency: string
+  shares: number
+  amount: number
+  status: "paid" | "pending"
+  /** Already inside net P&L via the broker's realized_pl on the current holding. */
+  in_net: boolean
+}
+
+/**
+ * Dividends ESTIMATED from moomoo's per-share history x shares held at each
+ * ex-date. Gross of withholding tax. Only `paid_not_in_net` is missing from
+ * net P&L — `paid_in_net` is already there, so never add `paid` to net.
+ */
+export type Dividends = {
+  base: string
+  window: { start: string; end: string }
+  paid: number
+  paid_in_net: number
+  paid_not_in_net: number
+  pending: number
+  approximate: true
+  derived: true
+  basis: string
+  excludes: string[]
+  by_currency: Record<
+    string,
+    {
+      currency: string
+      paid: number
+      paid_in_net: number
+      paid_not_in_net: number
+      pending: number
+      by_symbol: Record<string, number>
+    }
+  >
+  events: DividendEvent[]
+  upcoming: {
+    code: string
+    ex_date: string
+    payable_date: string | null
+    per_share: number
+    currency: string
+    shares_now: number
+    amount_if_held: number
+  }[]
+  unparsed: { code: string; ex_date: string | null; statement: string | null }[]
+  unreconciled: string[]
+  /** code -> why its history could not be read (MY entitlement, rate limit). */
+  unavailable: Record<string, string>
+  conversion: {
+    base: string
+    rates: Record<string, number>
+    converted_from: string[]
+    unconverted: string[]
+    source: string
+    note: string
+  }
 }
 
 export type Bar = {

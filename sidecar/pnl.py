@@ -15,7 +15,9 @@ it is assembled here from three sources of differing authority:
                           a different source, and only one of the two may be
                           added to the net or it double-counts.
 
-(3) and (4) are approximations: they do not account for commissions, dividends,
+(2) carries more than sale gains: on a held row moomoo also folds in each
+dividend on its payable date (``dividends.py`` reconciles this). (3) and (4)
+are approximations: they do not account for commissions, dividends,
 stock splits or other corporate actions, and are only as complete as the date
 window of deal history they were given. The API surfaces them under separate
 keys with ``approximate: true`` so the UI never presents them as broker truth.

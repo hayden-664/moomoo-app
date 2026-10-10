@@ -16,6 +16,7 @@ const GET_ROUTES = new Set([
   "account",
   "positions",
   "pnl",
+  "dividends",
   "history",
   "options/screen",
   "quota",
